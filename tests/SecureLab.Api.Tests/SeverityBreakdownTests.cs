@@ -5,7 +5,7 @@ using SecureLab.Api.Presentation.Contracts;
 
 namespace SecureLab.Api.Tests;
 
-// Тести спираються на відомий seed: Low, Medium і High по одному інциденту, Critical немає.
+// Тести спираються на відомий seed: після scaffold ЛР 2 Low = 3 (два нові Low-інциденти), Medium = 1, High = 1, Critical немає.
 // Перед запуском після ручних експериментів потрібен --reset-database.
 public sealed class SeverityBreakdownTests(SecureLabApiFactory factory)
     : IClassFixture<SecureLabApiFactory>
@@ -23,7 +23,7 @@ public sealed class SeverityBreakdownTests(SecureLabApiFactory factory)
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
         Assert.NotNull(levels);
         Assert.Equal(["Low", "Medium", "High", "Critical"], levels.Select(level => level.Severity));
-        Assert.Equal([1, 1, 1, 0], levels.Select(level => level.Count));
+        Assert.Equal([3, 1, 1, 0], levels.Select(level => level.Count));
     }
 
     [Fact]

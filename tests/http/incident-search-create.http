@@ -1,0 +1,16 @@
+# Власні сценарії ЛР 2 (Чубукіна А. О.). Лише локальний стенд і штучний seed.
+@host = http://localhost:5080
+
+### Пошук: звичайне слово з seed (очікую 200, один запис)
+GET {{host}}/api/incidents/search?q=%D0%BB%D0%B8%D1%81%D1%82
+
+### Пошук: слово без збігів (очікую 200, [])
+GET {{host}}/api/incidents/search?q=nothing
+
+### S-01 / S-02: мій контрольний read-only ввід  nothing%' OR 1=1 --
+# vulnerable commit: 200 і всі записи seed; fixed commit: 200 і []
+GET {{host}}/api/incidents/search?q=nothing%25%27%20OR%201%3D1%20--
+
+### Пошук: легітимний апостроф U+0027 у слові комп'ютерного
+# vulnerable commit: 500; fixed commit: 200 і запис «Перевірка журналу комп'ютерного класу»
+GET {{host}}/api/incidents/search?q=%D0%BA%D0%BE%D0%BC%D0%BF%27%D1%8E%D1%82%D0%B5%D1%80%D0%BD%D0%BE%D0%B3%D0%BE
