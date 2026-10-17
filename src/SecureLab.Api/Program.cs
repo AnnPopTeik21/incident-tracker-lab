@@ -12,6 +12,12 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 });
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+// Зламаний JSON або дата в чужому форматі є помилкою клієнта: 400 замість 500.
+// Тіло відповіді все одно формує стандартний Problem Details без деталей винятку.
+builder.Services.AddExceptionHandler(options => options.StatusCodeSelector = exception =>
+    exception is BadHttpRequestException badRequest
+        ? badRequest.StatusCode
+        : StatusCodes.Status500InternalServerError);
 
 var connectionString = builder.Configuration.GetConnectionString("SecureLab")
     ?? throw new InvalidOperationException(
@@ -21,6 +27,8 @@ builder.Services.AddDbContext<SecureLabDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IncidentQueries>();
 builder.Services.AddScoped<SeverityBreakdownQuery>();
+builder.Services.AddScoped<IncidentCreationService>();
+builder.Services.AddSingleton(TimeProvider.System);
 
 var app = builder.Build();
 

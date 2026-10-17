@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
+using SecureLab.Api.Application.Incidents;
+using SecureLab.Api.Presentation.Contracts;
 
 namespace SecureLab.Api.Scaffolding;
 
@@ -25,25 +27,30 @@ public static class Lab02Endpoints
                 Severity = row.Severity.ToString(), Status = row.Status.ToString(), row.CreatedAtUtc
             }));
         });
-        app.MapPost("/api/incidents", async (CreateIncidentRequest request, SecureLabDbContext db, CancellationToken ct) =>
+        // ЛР 2: створення з явним контрактом. Валідація і предметне правило в IncidentCreationService.
+        app.MapPost("/api/incidents", CreateIncidentAsync)
+            .WithName("CreateIncident")
+            .WithTags("Incidents")
+            .Produces<IncidentCreatedDto>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
+    }
+
+    private static async Task<IResult> CreateIncidentAsync(
+        CreateIncidentRequest request,
+        IncidentCreationService creation,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await creation.CreateAsync(request, cancellationToken);
+        return outcome switch
         {
-            // ЛР 02: доповніть server validation, business rules та response contract.
-            var now = DateTimeOffset.UtcNow;
-            var incident = new Incident
-            {
-                Id = Guid.NewGuid(), OwnerUserId = DbSeeder.AliceId,
-                Title = request.Title ?? "", Description = request.Description ?? "",
-                Severity = Enum.TryParse<IncidentSeverity>(request.Severity, true, out var severity)
-                    ? severity : IncidentSeverity.Low,
-                Status = IncidentStatus.New, OccurredAtUtc = request.OccurredAtUtc ?? now,
-                CreatedAtUtc = now, UpdatedAtUtc = now
-            };
-            db.Incidents.Add(incident);
-            await db.SaveChangesAsync(ct);
-            return Results.Created($"/api/incidents/{incident.Id}", new { incident.Id, incident.Title });
-        });
+            CreationOutcome.Rejected rejected => Results.ValidationProblem(rejected.Problems),
+            CreationOutcome.DuplicateActiveTitle => Results.Problem(
+                title: "Інцидент із таким заголовком уже відкрито",
+                detail: "Незакритий інцидент з цим заголовком уже існує. Змініть заголовок або спершу закрийте наявний інцидент.",
+                statusCode: StatusCodes.Status409Conflict),
+            CreationOutcome.Stored stored => Results.Created($"/api/incidents/{stored.Incident.Id}", stored.Incident),
+            _ => throw new InvalidOperationException("Невідомий результат створення.")
+        };
     }
 }
-
-public sealed record CreateIncidentRequest(
-    string? Title, string? Description, string? Severity, DateTimeOffset? OccurredAtUtc);

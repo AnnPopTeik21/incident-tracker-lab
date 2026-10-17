@@ -14,3 +14,95 @@ GET {{host}}/api/incidents/search?q=nothing%25%27%20OR%201%3D1%20--
 ### Пошук: легітимний апостроф U+0027 у слові комп'ютерного
 # vulnerable commit: 500; fixed commit: 200 і запис «Перевірка журналу комп'ютерного класу»
 GET {{host}}/api/incidents/search?q=%D0%BA%D0%BE%D0%BC%D0%BF%27%D1%8E%D1%82%D0%B5%D1%80%D0%BD%D0%BE%D0%B3%D0%BE
+
+### T-01 коректне створення (очікую 201 і шість полів; title змінювати перед повтором)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Сторонній ноутбук у серверній",
+  "description": "Біля стійки знайдено ноутбук без інвентарного номера.",
+  "severity": "Medium",
+  "occurredAtUtc": "2026-10-17T08:15:00Z"
+}
+
+### T-03 той самий title ще раз (очікую 409 Problem Details)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Сторонній ноутбук у серверній",
+  "description": "Повторне повідомлення про той самий випадок.",
+  "severity": "Medium",
+  "occurredAtUtc": "2026-10-17T08:20:00Z"
+}
+
+### T-02 severity "7": TryParse прийме число, IsDefined ні (очікую 400, errors.severity)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Перевірка числового рівня",
+  "description": "Рівень передано числом.",
+  "severity": "7",
+  "occurredAtUtc": "2026-10-17T08:15:00Z"
+}
+
+### T-02 немає occurredAtUtc (очікую 400, errors.occurredAtUtc)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Без часу події",
+  "description": "Клієнт забув передати час.",
+  "severity": "Low"
+}
+
+### T-02 дата на годину в майбутньому (очікую 400, errors.occurredAtUtc)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Подія з майбутнього",
+  "description": "Час події пізніший за поточний.",
+  "severity": "Low",
+  "occurredAtUtc": "2030-01-01T00:00:00Z"
+}
+
+### T-09 High і 39 символів опису після Trim (очікую 400, errors.description)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Межа опису 39",
+  "description": "  Зашифровано файли на ПК у читальні № 3.  ",
+  "severity": "High",
+  "occurredAtUtc": "2026-10-17T08:15:00Z"
+}
+
+### T-09 High і 40 символів опису після Trim (очікую 201)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Межа опису 40",
+  "description": "  Зашифровано файли на ПК у читальні № 31.  ",
+  "severity": "High",
+  "occurredAtUtc": "2026-10-17T08:15:00Z"
+}
+
+### CP-01 спроба передати власника і статус (очікую 201, status New, власник Аліса)
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Спроба обрати власника",
+  "description": "У тілі є ownerUserId і status.",
+  "severity": "Low",
+  "occurredAtUtc": "2026-10-17T08:15:00Z",
+  "ownerUserId": "10000000-0000-0000-0000-000000000002",
+  "status": "Closed"
+}
+
+### T-06 відсутній інцидент (очікую 404 Problem Details)
+GET {{host}}/api/incidents/99999999-9999-9999-9999-999999999999
