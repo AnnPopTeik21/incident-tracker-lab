@@ -46,6 +46,28 @@
         Виберіть інцидент зі списку.
       </div>
     </section>
+
+    <section class="panel breakdown-panel" aria-labelledby="breakdown-title">
+      <div class="toolbar">
+        <div>
+          <h2 id="breakdown-title">Підсумок за критичністю</h2>
+          <p id="breakdown-status" role="status">Натисніть «Порахувати», щоб отримати підсумок.</p>
+        </div>
+        <form id="breakdown-form">
+          <label for="breakdown-status-filter">Статус</label>
+          <select id="breakdown-status-filter" name="status">
+            <option value="">Усі</option>
+            <option value="New">New</option>
+            <option value="Triaged">Triaged</option>
+            <option value="InProgress">InProgress</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Closed">Closed</option>
+          </select>
+          <button id="breakdown-button" type="submit">Порахувати</button>
+        </form>
+      </div>
+      <ol id="breakdown-list" class="breakdown-list"></ol>
+    </section>
   </main>
 </body>
 </html>
