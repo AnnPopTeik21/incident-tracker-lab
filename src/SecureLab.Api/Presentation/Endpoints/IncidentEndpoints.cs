@@ -21,12 +21,10 @@ public static class IncidentEndpoints
             .Produces<IncidentDetailsResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapGet("/severity-summary", () => Results.Problem(
-                title: "Точку розширення ще не реалізовано",
-                detail: "Завершіть цей endpoint під час лабораторної роботи № 1.",
-                statusCode: StatusCodes.Status501NotImplemented))
+        group.MapGet("/severity-summary", GetSeverityBreakdownAsync)
             .WithName("GetIncidentSeveritySummary")
-            .ProducesProblem(StatusCodes.Status501NotImplemented);
+            .Produces<IReadOnlyList<SeverityCountDto>>()
+            .ProducesValidationProblem();
 
         return endpoints;
     }
@@ -52,6 +50,42 @@ public static class IncidentEndpoints
         }
 
         return Results.Ok(await queries.GetListAsync(parsedStatus, cancellationToken));
+    }
+
+    private static async Task<IResult> GetSeverityBreakdownAsync(
+        string? status,
+        SeverityBreakdownQuery breakdownQuery,
+        CancellationToken cancellationToken)
+    {
+        IncidentStatus? statusFilter = null;
+        if (status is not null)
+        {
+            if (!TryReadStatusFilter(status, out var allowedStatus))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["status"] = ["Вкажіть одне значення з точним регістром: New, Triaged, InProgress, Resolved, Closed."]
+                });
+            }
+
+            statusFilter = allowedStatus;
+        }
+
+        return Results.Ok(await breakdownQuery.CountBySeverityAsync(statusFilter, cancellationToken));
+    }
+
+    // Приймаємо лише назву, оголошену в enum IncidentStatus, у точному регістрі.
+    // Цифри і кома відсікаються окремо: Enum.TryParse пропустив би "2" або "New,Triaged".
+    private static bool TryReadStatusFilter(string rawValue, out IncidentStatus parsedStatus)
+    {
+        parsedStatus = default;
+        if (rawValue.Length == 0 || rawValue.Any(symbol => char.IsDigit(symbol) || symbol == ',' || char.IsWhiteSpace(symbol)))
+        {
+            return false;
+        }
+
+        return Enum.TryParse(rawValue, ignoreCase: false, out parsedStatus)
+            && Enum.IsDefined(parsedStatus);
     }
 
     private static async Task<IResult> GetDetailsAsync(
