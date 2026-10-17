@@ -18,16 +18,18 @@ public sealed class CreateIncidentContractTests(SecureLabApiFactory factory)
     private static readonly string[] InternalMarkers =
         ["Exception", "   at ", "Npgsql", "SELECT", "Password", "Host=", "SecureLab.Api."];
 
-    private readonly HttpClient _http = factory.CreateClient();
+    // ЛР 3: POST /api/incidents вимагає входу, тому клас працює через cookie-клієнт Аліси.
+    private HttpClient _http = null!;
     private readonly List<Guid> _createdIds = [];
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task InitializeAsync() => _http = await factory.LoginAsync("alice", StudySecret.Password);
 
     public async Task DisposeAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SecureLabDbContext>();
         await db.Incidents.Where(incident => _createdIds.Contains(incident.Id)).ExecuteDeleteAsync();
+        _http.Dispose();
     }
 
     private static object ValidBody(string title, string severity = "Medium", string? description = null) => new

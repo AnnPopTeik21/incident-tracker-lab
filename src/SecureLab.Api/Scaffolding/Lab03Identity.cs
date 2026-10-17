@@ -1,6 +1,10 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
+using SecureLab.Api.Application.Accounts;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
+using SecureLab.Api.Presentation.Contracts;
+using SecureLab.Api.Security;
 
 namespace SecureLab.Api.Scaffolding;
 
@@ -35,23 +39,11 @@ public static class Lab03Identity
 
     public static void MapLab03Identity(this WebApplication app)
     {
-        app.MapPost("/api/auth/register", async (RegistrationInput input, UserManager<ApplicationUser> users) =>
-        {
-            // ЛР 03: завершіть DTO validation та перевірки довірчої межі.
-            if (string.IsNullOrWhiteSpace(input.UserName) || string.IsNullOrWhiteSpace(input.Email)
-                || string.IsNullOrWhiteSpace(input.DisplayName) || string.IsNullOrEmpty(input.Password))
-                return Results.BadRequest();
-            var user = new ApplicationUser
-            {
-                Id = Guid.NewGuid(), UserName = input.UserName.Trim(), Email = input.Email.Trim(),
-                DisplayName = input.DisplayName.Trim()
-            };
-            var result = await users.CreateAsync(user, input.Password);
-            if (!result.Succeeded) return Results.BadRequest(new { message = "Registration failed" });
-            var role = await users.AddToRoleAsync(user, DbSeeder.ReporterRole);
-            if (!role.Succeeded) throw new InvalidOperationException("Default role assignment failed.");
-            return Results.Created("/api/me", new { user.Id, user.UserName, user.DisplayName });
-        });
+        app.MapPost("/api/auth/register", SignUpAsync)
+            .WithTags("Auth")
+            .Produces<SignUpResult>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
         app.MapPost("/api/auth/login", async (LoginInput input, SignInManager<ApplicationUser> signIn) =>
         {
             if (string.IsNullOrWhiteSpace(input.UserName) || string.IsNullOrEmpty(input.Password))
@@ -60,18 +52,88 @@ public static class Lab03Identity
             return result.Succeeded ? Results.NoContent() : Results.Unauthorized();
         });
         app.MapPost("/api/auth/logout", () => Results.StatusCode(StatusCodes.Status501NotImplemented));
-        // Навмисно хибна навчальна довіра: ЛР 03 замінює заявлений id на verified principal.
-        app.MapGet("/api/me", async (HttpContext context, SecureLabDbContext db) =>
-        {
-            if (!Guid.TryParse(context.Request.Headers["X-Demo-UserId"], out var claimedId))
-                return Results.StatusCode(StatusCodes.Status501NotImplemented);
-            var user = await db.Users.FindAsync(claimedId);
-            return user is null ? Results.NotFound() : Results.Ok(new { user.Id, user.UserName, user.DisplayName });
-        });
+        // ЛР 3: профіль лише з перевіреного principal; заголовок X-Demo-UserId більше нічого не означає.
+        app.MapGet("/api/me", GetCurrentUser)
+            .WithTags("Auth")
+            .Produces<MeResponse>()
+            .RequireAuthorization();
         // Приклад лише mechanics: не повертає identity і не реалізує оцінювану operation.
         app.MapGet("/api/auth/session-check", () => Results.NoContent()).RequireAuthorization();
     }
+
+    private static async Task<IResult> SignUpAsync(SignUpRequest request, UserManager<ApplicationUser> users)
+    {
+        var draft = SignUpRules.Check(request, out var problems);
+        if (draft is null)
+        {
+            return Results.ValidationProblem(problems);
+        }
+
+        // PasswordHash рахує UserManager; код endpoint пароль не обробляє і не зберігає.
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(), UserName = draft.UserName, Email = draft.Email, DisplayName = draft.DisplayName
+        };
+        var result = await users.CreateAsync(user, draft.Password);
+        if (!result.Succeeded)
+        {
+            return MapIdentityRefusal(result);
+        }
+
+        var role = await users.AddToRoleAsync(user, DbSeeder.ReporterRole);
+        if (!role.Succeeded) throw new InvalidOperationException("Default role assignment failed.");
+        return Results.Created("/api/me", new SignUpResult(user.Id, draft.UserName, draft.DisplayName));
+    }
+
+    // Контракт відмов: зайняте ім'я або email дає 409 з однаковим текстом для обох випадків,
+    // слабкий пароль чи недозволений формат дає 400 з ключем поля. Пароль у відповідь не потрапляє.
+    private static IResult MapIdentityRefusal(IdentityResult result)
+    {
+        var codes = result.Errors.Select(error => error.Code).ToHashSet(StringComparer.Ordinal);
+        var problems = new Dictionary<string, string[]>();
+        if (codes.Any(code => code.StartsWith("Password", StringComparison.Ordinal)))
+        {
+            problems["password"] =
+                ["Пароль не відповідає вимогам: від 10 символів, велика і мала латинські літери, цифра та інший символ."];
+        }
+        if (codes.Contains("InvalidUserName"))
+        {
+            problems["userName"] = ["Ім'я користувача містить недозволені символи."];
+        }
+        if (codes.Contains("InvalidEmail"))
+        {
+            problems["email"] = ["Потрібна коректна адреса email."];
+        }
+        if (problems.Count > 0)
+        {
+            return Results.ValidationProblem(problems);
+        }
+        if (codes.Contains("DuplicateUserName") || codes.Contains("DuplicateEmail"))
+        {
+            return Results.Problem(
+                title: "Реєстрацію не завершено",
+                detail: "Обліковий запис з таким ім'ям користувача або email уже існує.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["registration"] = ["Реєстрацію не завершено. Перевірте дані форми."]
+        });
+    }
+
+    private static IResult GetCurrentUser(HttpContext httpContext)
+    {
+        // Сюди доходить лише автентифікований запит. Якщо claim немає, це помилка конфігурації,
+        // а не привід шукати id у query, body чи заголовку.
+        if (!VerifiedUser.TryGetId(httpContext.User, out var verifiedUserId))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        var userName = httpContext.User.FindFirstValue(ClaimTypes.Name) ?? string.Empty;
+        var roles = httpContext.User.FindAll(ClaimTypes.Role).Select(claim => claim.Value).Order().ToArray();
+        return Results.Ok(new MeResponse(verifiedUserId, userName, roles));
+    }
 }
 
-public sealed record RegistrationInput(string? UserName, string? Email, string? DisplayName, string? Password);
 public sealed record LoginInput(string? UserName, string? Password);

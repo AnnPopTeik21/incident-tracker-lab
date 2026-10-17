@@ -17,7 +17,10 @@ public sealed class IncidentCreationService(
     TimeProvider clock,
     ILogger<IncidentCreationService> logger)
 {
-    public async Task<CreationOutcome> CreateAsync(CreateIncidentRequest request, CancellationToken cancellationToken)
+    public async Task<CreationOutcome> CreateAsync(
+        CreateIncidentRequest request,
+        Guid ownerUserId,
+        CancellationToken cancellationToken)
     {
         // Поточний UTC-час фіксуємо один раз на початку обробки.
         var nowUtc = clock.GetUtcNow();
@@ -43,9 +46,8 @@ public sealed class IncidentCreationService(
         var incident = new Incident
         {
             Id = Guid.NewGuid(),
-            // Тимчасовий demo context ЛР 2: власника задає сервер, а не body.
-            // У ЛР 3 тут буде verified principal.
-            OwnerUserId = DbSeeder.AliceId,
+            // ЛР 3: власник приходить з endpoint, який узяв його з перевіреного principal.
+            OwnerUserId = ownerUserId,
             Title = draft.Title,
             Description = draft.Description,
             Severity = draft.Severity,

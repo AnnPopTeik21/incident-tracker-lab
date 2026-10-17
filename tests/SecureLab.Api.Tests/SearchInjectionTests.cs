@@ -20,16 +20,18 @@ public sealed class SearchInjectionTests(SecureLabApiFactory factory)
     private static readonly string[] SeverityRank = ["Critical", "High", "Medium", "Low"];
     private static readonly string[] StatusRank = ["New", "Triaged", "InProgress", "Resolved", "Closed"];
 
-    private readonly HttpClient _http = factory.CreateClient();
+    // ЛР 3: POST /api/incidents вимагає входу, тому клас працює через cookie-клієнт Аліси.
+    private HttpClient _http = null!;
     private readonly List<Guid> _createdIds = [];
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task InitializeAsync() => _http = await factory.LoginAsync("alice", StudySecret.Password);
 
     public async Task DisposeAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SecureLabDbContext>();
         await db.Incidents.Where(incident => _createdIds.Contains(incident.Id)).ExecuteDeleteAsync();
+        _http.Dispose();
     }
 
     private async Task<List<IncidentSearchItemDto>> SearchOkAsync(string query, string extra = "")

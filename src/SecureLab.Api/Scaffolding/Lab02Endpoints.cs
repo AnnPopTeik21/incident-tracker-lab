@@ -1,5 +1,6 @@
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Presentation.Contracts;
+using SecureLab.Api.Security;
 
 namespace SecureLab.Api.Scaffolding;
 
@@ -16,11 +17,14 @@ public static class Lab02Endpoints
             .ProducesValidationProblem();
 
         // ЛР 2: створення з явним контрактом. Валідація і предметне правило в IncidentCreationService.
+        // ЛР 3: лише для того, хто ввійшов; анонімний запит отримує 401 ще до коду endpoint.
         app.MapPost("/api/incidents", CreateIncidentAsync)
             .WithName("CreateIncident")
             .WithTags("Incidents")
+            .RequireAuthorization()
             .Produces<IncidentCreatedDto>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status409Conflict);
     }
 
@@ -43,10 +47,17 @@ public static class Lab02Endpoints
 
     private static async Task<IResult> CreateIncidentAsync(
         CreateIncidentRequest request,
+        HttpContext httpContext,
         IncidentCreationService creation,
         CancellationToken cancellationToken)
     {
-        var outcome = await creation.CreateAsync(request, cancellationToken);
+        // Власник нового запису: id з перевіреного principal. Поле owner у JSON не входить у DTO.
+        if (!VerifiedUser.TryGetId(httpContext.User, out var ownerUserId))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        var outcome = await creation.CreateAsync(request, ownerUserId, cancellationToken);
         return outcome switch
         {
             CreationOutcome.Rejected rejected => Results.ValidationProblem(rejected.Problems),
