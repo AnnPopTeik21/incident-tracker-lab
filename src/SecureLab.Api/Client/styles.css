@@ -138,3 +138,29 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+.breakdown-panel {
+  grid-column: 1 / -1;
+}
+
+.breakdown-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breakdown-list li {
+  min-width: 8rem;
+  border: 1px solid #dce3ed;
+  border-radius: 0.55rem;
+  padding: 0.6rem 0.9rem;
+  font-weight: 600;
+}
+
+.breakdown-list li.breakdown-zero {
+  color: #6b7a90;
+  font-weight: 400;
+}

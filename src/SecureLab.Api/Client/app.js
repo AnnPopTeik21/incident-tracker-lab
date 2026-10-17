@@ -2,6 +2,9 @@ const listElement = document.querySelector("#incident-list");
 const listStatusElement = document.querySelector("#list-status");
 const detailsElement = document.querySelector("#incident-details");
 const filterForm = document.querySelector("#filter-form");
+const breakdownForm = document.querySelector("#breakdown-form");
+const breakdownStatusElement = document.querySelector("#breakdown-status");
+const breakdownListElement = document.querySelector("#breakdown-list");
 
 async function apiFetch(path, options = {}) {
   const response = await fetch(path, {
@@ -102,6 +105,44 @@ async function loadIncidentDetails(id) {
     detailsElement.textContent = `Помилка: ${error.message}`;
   }
 }
+
+// Підсумок за критичністю: GET /api/incidents/severity-summary[?status=...]
+async function loadSeverityBreakdown() {
+  breakdownStatusElement.textContent = "Завантаження…";
+  breakdownListElement.replaceChildren();
+
+  const status = new FormData(breakdownForm).get("status");
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+
+  try {
+    const levels = await apiFetch(`/api/incidents/severity-summary${query}`);
+    const total = levels.reduce((sum, level) => sum + level.count, 0);
+
+    // Сервер завжди повертає всі рівні, тому "порожньо" означає нуль інцидентів загалом.
+    if (levels.length === 0 || total === 0) {
+      breakdownStatusElement.textContent = "Даних немає: за цими умовами інцидентів не знайдено.";
+      return;
+    }
+
+    breakdownStatusElement.textContent = `Усього інцидентів: ${total}`;
+    for (const level of levels) {
+      const row = document.createElement("li");
+      row.textContent = `${level.severity}: ${level.count}`;
+      if (level.count === 0) {
+        row.className = "breakdown-zero";
+      }
+      breakdownListElement.append(row);
+    }
+  } catch {
+    // Фіксований текст: без stack trace, SQL і деталей сервера.
+    breakdownStatusElement.textContent = "Не вдалося отримати підсумок. Спробуйте ще раз.";
+  }
+}
+
+breakdownForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadSeverityBreakdown();
+});
 
 filterForm.addEventListener("submit", (event) => {
   event.preventDefault();
