@@ -15,6 +15,27 @@ GET {{host}}/api/incidents/search?q=nothing%25%27%20OR%201%3D1%20--
 # vulnerable commit: 500; fixed commit: 200 і запис «Перевірка журналу комп'ютерного класу»
 GET {{host}}/api/incidents/search?q=%D0%BA%D0%BE%D0%BC%D0%BF%27%D1%8E%D1%82%D0%B5%D1%80%D0%BD%D0%BE%D0%B3%D0%BE
 
+### Пошук: % як звичайний символ (fixed commit: 200 і [], бо в seed немає %; escape-символ ILIKE тут !)
+GET {{host}}/api/incidents/search?q=%25
+
+### Пошук без sortBy: createdAtUtc, нові першими
+GET {{host}}/api/incidents/search?q=
+
+### sortBy=severity: Critical, High, Medium, Low (регістр ключа не важливий)
+GET {{host}}/api/incidents/search?sortBy=Severity
+
+### sortBy=severity&order=desc: від Low до Critical
+GET {{host}}/api/incidents/search?sortBy=severity&order=desc
+
+### sortBy=status: New, Triaged, InProgress, Resolved, Closed
+GET {{host}}/api/incidents/search?sortBy=status
+
+### T-05 sortBy поза allowlist (fixed commit: 400, errors.sortBy; vulnerable: 200, ORDER BY title)
+GET {{host}}/api/incidents/search?q=a&sortBy=title
+
+### T-05 order поза allowlist (400, errors.order)
+GET {{host}}/api/incidents/search?sortBy=status&order=sideways
+
 ### T-01 коректне створення (очікую 201 і шість полів; title змінювати перед повтором)
 POST {{host}}/api/incidents
 Content-Type: application/json

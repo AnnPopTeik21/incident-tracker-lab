@@ -28,6 +28,7 @@ builder.Services.AddDbContext<SecureLabDbContext>(options =>
 builder.Services.AddScoped<IncidentQueries>();
 builder.Services.AddScoped<SeverityBreakdownQuery>();
 builder.Services.AddScoped<IncidentCreationService>();
+builder.Services.AddScoped<IncidentSearchQuery>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 var app = builder.Build();
