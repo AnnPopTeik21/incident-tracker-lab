@@ -92,8 +92,9 @@ dotnet test tests/SecureLab.Api.Tests/SecureLab.Api.Tests.csproj --configuration
 bash scripts/test.sh
 ```
 
-HTTP-сценарії для ручної перевірки розташовані у `tests/http/incidents.http`.
-Вони охоплюють `200`, `400`, `404` та початковий `501` для точки розширення.
+HTTP-сценарії для ручної перевірки розташовані у `tests/http/incidents.http`
+(ЛР 1), `tests/http/lab-02-search.http` (scaffold ЛР 2) і
+`tests/http/incident-search-create.http` (власні сценарії ЛР 2).
 
 ## 5. Завдання ЛР 1 у starter
 
@@ -113,6 +114,18 @@ HTTP-сценарії для ручної перевірки розташова�
 інцидентів має `count: 0`. Необов'язковий параметр `status` приймає лише назву
 з `IncidentStatus` у точному регістрі, інакше `400`. У клієнті є панель
 «Підсумок за критичністю». Опис маршруту: `docs/architecture.md`.
+
+### Стан після ЛР 2
+
+Встановлено scaffold `lab-02-start-v1` (seed тепер має п'ять інцидентів, Low = 3).
+`POST /api/incidents` приймає лише `CreateIncidentRequest` (title, description,
+severity, occurredAtUtc) і перевіряє його на сервері: `400` для порушення
+контракту, `409` для незакритого дубліката title, `201` з `IncidentCreatedDto`.
+`GET /api/incidents/search?q=&sortBy=&order=` більше не склеює SQL: `q` іде
+параметром через LINQ `EF.Functions.ILike`, а `sortBy` обирається зі словника
+дозволених виразів. Ручні
+сценарії: `tests/http/incident-search-create.http`. Опис: `docs/architecture.md`,
+звіт: `docs/report-template.md`.
 
 ## 6. Структура
 

@@ -55,12 +55,53 @@
   (null із query → 404 Problem Details)
 ```
 
+## Маршрути, додані в ЛР 2
+
+### Пошук `GET /api/incidents/search`
+
+```text
+GET /api/incidents/search?q=...&sortBy=...&order=...
+  → Lab02Endpoints.SearchIncidentsAsync (binding q, sortBy, order з query string)
+  → IncidentSearchQuery.ResolveOrdering: sortBy шукається у словнику SortKeys
+      (createdAtUtc | severity | status, регістр не важливий), order = asc | desc;
+      інше → 400 з ключем sortBy або order, до SQL не доходить
+  → IncidentSearchQuery.FindAsync
+      → IlikeText.AnywhereLiteral(q) (Application/Search): екранує !, % і _ символом !, додає % з обох боків
+      → Incidents.AsNoTracking().WhereTitleOrDescriptionLike(pattern) (метод розширення,
+        EF.Functions.ILike(Title, pattern, "!") || EF.Functions.ILike(Description, pattern, "!"))
+        (pattern стає параметром @pattern; текст команди незмінний)
+      → OrderBy / OrderByDescending(вираз із SortKeys) → ThenBy(Id) → Take(50)
+  → PostgreSQL: SELECT ... FROM incidents WHERE title ILIKE @pattern ESCAPE '!' OR ... ORDER BY CASE ... LIMIT
+  → IncidentSearchItemDto[] (id, title, description, severity, status, createdAtUtc)
+```
+
+До виправлення (vulnerable commit `202f7b4`) той самий маршрут склеював `q` і `sortBy` у рядок SQL
+у `Scaffolding/Lab02Endpoints.cs` і передавав його у `FromSqlRaw`.
+
+### Створення `POST /api/incidents`
+
+```text
+JSON body → CreateIncidentRequest (лише title, description, severity, occurredAtUtc)
+  → Lab02Endpoints.CreateIncidentAsync → IncidentCreationService.CreateAsync
+      → nowUtc = TimeProvider.GetUtcNow() (один раз)
+      → IncidentCreationRules.Check: Trim один раз; required, 160 / 4000, severity лише назва
+        (без цифр і ком) + Enum.TryParse + Enum.IsDefined, occurredAtUtc ≤ now + 5 хв,
+        High/Critical → опис ≥ 40 символів → 400 ValidationProblem до доступу до БД
+      → AnyAsync(Title == title && Status != Closed) → 409 Problem Details
+      → Incident: Id, OwnerUserId (demo context Alice), Status New, CreatedAtUtc, UpdatedAtUtc задає сервер
+  → 201 Created + Location /api/incidents/{id} + IncidentCreatedDto
+```
+
+Зламаний JSON або дата в неправильному форматі: `BadHttpRequestException` →
+`AddExceptionHandler(StatusCodeSelector)` → `400 application/problem+json` без деталей винятку.
+
 ## Межі довіри
 
 | Межа | Які дані її перетинають | Чого не можна припускати | Де контроль |
 |---|---|---|---|
 | браузер → API | метод, URL, параметр `status`, path `{id}`, заголовки | що прийде лише значення з `<select>` | `TryReadStatusFilter`: без цифр, ком і пробілів, `Enum.TryParse` з точним регістром + `Enum.IsDefined`; для деталей обмеження маршруту `:guid` |
-| API → PostgreSQL | значення фільтра, `id` | що рядок із запиту можна вклеїти в SQL | LINQ і EF Core передають значення параметром (`@requiredStatus`), `AsNoTracking()` для читання |
+| API → PostgreSQL | значення фільтра, `id`, `q` пошуку, вибір `sortBy` | що рядок із запиту можна вклеїти в SQL | LINQ і EF Core передають значення параметром (`@requiredStatus`); пошук через LINQ `EF.Functions.ILike` з параметром і екрануванням символом `!`; `sortBy` лише ключ словника серверних виразів |
+| JSON body → модель створення | title, description, severity, occurredAtUtc і будь-які зайві поля | що клієнт надішле лише дозволені поля або коректні значення | `CreateIncidentRequest` без owner, status, id, audit-полів; `IncidentCreationRules` на сервері |
 | API → браузер | JSON відповіді | що право бачити запис означає право бачити всі поля | окремі DTO: `SeverityCountDto` (2 поля), `IncidentDetailsResponse` без `OwnerUserId` і email |
 | відповідь → DOM | текст із JSON (назви рівнів, description) | що текст із бази безпечний як HTML | лише `textContent` і `document.createTextNode`; тест `ClientScript_DoesNotUseDangerousInnerHtmlSink` |
 | конфігурація → API | connection string, `ASPNETCORE_ENVIRONMENT` | що локальні навчальні значення підходять деінде | реальні значення лише через змінну середовища, `infra/.env` у `.gitignore` |
@@ -85,6 +126,6 @@
 1. Зупинити API (`Ctrl+C`).
 2. `dotnet run --no-build --project src/SecureLab.Api -- --reset-database` (з тією самою
    змінною `ConnectionStrings__SecureLab`, якщо порт не стандартний).
-3. Команда очищує лише навчальні таблиці і заново пише seed: три інциденти (Low, Medium, High),
-   чотири користувачі, два публічні коментарі. Працює тільки в Development.
+3. Команда очищує лише навчальні таблиці і заново пише seed: п'ять інцидентів (після scaffold ЛР 2:
+   Low 3, Medium 1, High 1), чотири користувачі, два публічні коментарі. Працює тільки в Development.
 4. Знову запустити API і перевірити `GET /api/incidents` та `GET /api/incidents/severity-summary`.
