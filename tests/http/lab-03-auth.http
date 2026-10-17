@@ -1,0 +1,59 @@
+# ЛР 3: межа автентифікації. Пароля в цьому файлі немає.
+# Логін бере його зі змінної середовища SeedUsers__Password процесу IDE
+# (VS Code REST Client і Visual Studio розуміють {{$processEnv ...}}).
+@host = http://localhost:5080
+@aliceId = 10000000-0000-0000-0000-000000000001
+@bobId = 10000000-0000-0000-0000-000000000002
+
+### 1. Профіль без входу: очікувано 401 Problem Details (до ЛР 3 було 501)
+GET {{host}}/api/me
+Accept: application/json
+
+### 2. Заголовок Боба без cookie: очікувано 401 (у scaffold тут був профіль Боба)
+GET {{host}}/api/me
+X-Demo-UserId: {{bobId}}
+
+### 3. Створення без входу: очікувано 401, запис не з'являється
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Анонімна спроба",
+  "description": "Запит без cookie.",
+  "severity": "Low",
+  "occurredAtUtc": "2026-10-17T07:40:00Z"
+}
+
+### 4. Вхід Аліси: очікувано 204 і Set-Cookie (значення не копіювати)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "userName": "alice",
+  "password": "{{$processEnv SeedUsers__Password}}"
+}
+
+### 5. Профіль з cookie і чужим заголовком: очікувано 200 і userId Аліси
+GET {{host}}/api/me
+X-Demo-UserId: {{bobId}}
+
+### 6. Створення з підробленим власником: очікувано 201, власник Аліса
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Перевірка власника з principal",
+  "description": "У тілі вказано ownerUserId Боба, сервер його не читає.",
+  "severity": "Low",
+  "occurredAtUtc": "2026-10-17T07:45:00Z",
+  "ownerUserId": "{{bobId}}"
+}
+
+### 7. Невідоме ім'я: очікувано той самий 401, що й для хибного пароля
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "userName": "nobody-here",
+  "password": "{{$processEnv SeedUsers__Password}}"
+}
