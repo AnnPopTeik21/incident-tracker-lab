@@ -25,6 +25,36 @@ Accept: application/json
 GET {{host}}/api/incidents?status=Unknown
 Accept: application/json
 
-### Lab 1 extension point: expected 501 before student implementation
+### Lab 1 severity summary: expected 200 (до реалізації був 501)
+# Політика: повний перелік рівнів, порядок Low, Medium, High, Critical.
+# На відновленому seed: Low 1, Medium 1, High 1, Critical 0.
 GET {{host}}/api/incidents/severity-summary
+Accept: application/json
+
+### Summary with status filter: expected 200, лише Medium = 1
+GET {{host}}/api/incidents/severity-summary?status=Triaged
+Accept: application/json
+
+### Summary empty scenario: expected 200, чотири рівні з count 0
+GET {{host}}/api/incidents/severity-summary?status=Resolved
+Accept: application/json
+
+### Summary invalid filter (інший регістр): expected 400 Validation Problem Details
+GET {{host}}/api/incidents/severity-summary?status=triaged
+Accept: application/json
+
+### Summary invalid filter (число замість назви): expected 400 Validation Problem Details
+GET {{host}}/api/incidents/severity-summary?status=2
+Accept: application/json
+
+### Details of the seed incident with <script> in description: expected 200
+GET {{host}}/api/incidents/20000000-0000-0000-0000-000000000003
+Accept: application/json
+
+### Another missing UUID: expected 404 Problem Details з traceId
+GET {{host}}/api/incidents/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+Accept: application/json
+
+### Empty list flow: expected 200 з []
+GET {{host}}/api/incidents?status=Resolved
 Accept: application/json
