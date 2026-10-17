@@ -1,8 +1,84 @@
-# Звіт до лабораторної роботи № 2
+# Звіт до лабораторної роботи № 3
+
+Виконала: Чубукіна Анна Олександрівна, КБ-41. Обраний рівень: «Добре». Повний звіт з рисунками
+подано окремим файлом .docx. Паролів, значень cookie, hash і connection string тут немає.
+
+## Відтворення
+
+- Baseline 2-A, base tag `v0.2.0` (`01d7605`), гілка `lab/3-authentication` від нього.
+- Окремий коміт `a41521b`: `global.json` з нижньою межею 10.0.100 і `latestFeature` (до installer).
+- Scaffold `lab-03-start-v1`, `.scaffolds/lab-03.json`: base_commit `01d7605`, коміт scaffold `73d145b`.
+- Власні коміти: `b3abaa6` (/api/me і власник із principal, контракт реєстрації), `7ba17eb`
+  (A-01…A-05, A-07, реєстрація), `3cb9991` (logout, ліміт входів, події, клієнт, A-06, cookie flags),
+  далі коміт документації; анотований тег `v0.3.0` стоїть на останньому коміті гілки.
+- ОС і інструменти: Windows 11, PowerShell 7, .NET SDK 10.0.302, Docker Desktop, Git.
+- Команди: `docker compose --env-file infra/.env -f infra/compose.yaml up -d --wait`,
+  `dotnet run --project src/SecureLab.Api -- --reset-database`, `dotnet build SecureLab.sln -c Release`,
+  `dotnet test tests/SecureLab.Api.Tests -c Release`. Пароль: лише `$env:SeedUsers__Password`.
+- Два reset поспіль (`Reset-Twice.ps1` з комплекту) після scaffold: обидва пройшли, тести 59 з 59.
+  Підсумковий прогін після останньої зміни: 81 з 81.
+
+## Власна реалізація і межі
+
+- DTO: `SignUpRequest` (userName, email, displayName, password), `SignUpResult` (id, userName,
+  displayName), `MeResponse` (userId, userName, roles) у `Presentation/Contracts/AccountContracts.cs`.
+  Роль, Id, PasswordHash і власник у request DTO не входять; зайві поля JSON відкидаються.
+- Межі реєстрації: userName 4–40 символів `[A-Za-z0-9._-]`, email до 120 і коректний формат,
+  displayName 2–80, password до 128; вимоги до складу пароля перевіряє Identity (від 10 символів,
+  велика, мала, цифра, інший символ).
+- `/api/me` і `POST /api/incidents` беруть id лише з `HttpContext.User` (`VerifiedUser.TryGetId`),
+  обидва мають `.RequireAuthorization()`. Заголовок `X-Demo-UserId` більше ніде не читається.
+- Cookie: HttpOnly, SameSite=Lax, SecurePolicy SameAsRequest у Development і Always поза ним.
+  Фактично: HTTPS-вхід дає `path=/; secure; samesite=lax; httponly` без `expires`; HTTP-вхід дає
+  той самий набір без `secure`. Строк дії стандартний, не змінювався.
+- Login: однаковий 401 Problem Details для невідомого імені і хибного пароля (A-07).
+- Duplicate: 409 з одним текстом для зайнятого імені і зайнятого email; слабкий пароль і формат: 400.
+- Ліміт входів: вбудований `AddRateLimiter`, політика `login`, фіксоване вікно 4 запити за 30 с,
+  ключ IP-адреса клієнта, далі 429 Problem Details і `Retry-After`; відновлення після вікна.
+- Події: `AuthAuditLog` (`LoggerMessage`), категорія `SecureLab.AuthAudit`: тип, результат, час UTC,
+  userId лише після успіху, trace id. Ім'я з форми, пароль, cookie, hash і тіло запиту не пишуться.
+- CSRF: навчальний борг до ЛР 6, `SameSite=Lax` закриває лише частину міжсайтових запитів.
+
+## Докази
+
+| ID | Рівень | Передумова/дія | Очікувано | Фактично | Безпечний доказ |
+|---|---|---|---|---|---|
+| T-01 | достатній | register з валідним DTO | safe 201 | 201, Location /api/me, рівно id/userName/displayName | тест, браузер |
+| T-02 | достатній | некоректні поля, слабкий пароль | safe rejection | 400 з ключем поля; displayName 121 тепер 400 (до змін 500) | тест |
+| T-03 | достатній | `\d identity_users` без даних | password не відкрито | є лише `PasswordHash text`, стовпця пароля немає | опис таблиці |
+| A-01 | достатній | anonymous /api/me і POST /api/incidents | 401, no redirect | 401 problem+json, без Location і WWW-Authenticate, запис не створено | тест |
+| A-02 | достатній | login → me | principal user | 200, userId Аліси, три поля | тест, PowerShell |
+| A-05 | достатній | Боб, ownerUserId Аліси в JSON | owner = Bob | власник у БД Боб, деталі «Боб Мельник» | тест |
+| S-01 | достатній | відповіді, журнал API, diff | без витоків | пароль, hash, cookie у журналі та історії Git: 0 збігів | чекліст |
+| A-03 | добрий | cookie Аліси + X-Demo-UserId Боба | principal не змінюється | 200, userId Аліси | тест |
+| A-04 | добрий | Боб, без owner у JSON | owner = Bob | власник у БД Боб | тест |
+| A-06 | добрий | login → logout → me | 401 | 204, Set-Cookie expires 1970, потім 401 | тест |
+| A-07 | добрий | невідоме ім'я і хибний пароль | однаково | ті самі status, тип, type/title/status/detail | тест |
+| Browser flow | добрий | п'ять спостережень етапу 4 | state/profile/create/logout | усі п'ять підтверджено | рисунки звіту |
+| Duplicate | добрий | зайняте ім'я, зайнятий email | послідовний 409 | 409 з однаковим текстом | тест |
+| Cookie flags | добрий | HTTPS-вхід | контракт профілю | httponly, secure, samesite=lax, path=/, без expires | тест |
+| Rate limit і події | добрий | 5-та спроба, вікно, журнал | 429, відновлення | 429 + Retry-After навіть для правильного пароля; через вікно 204; події без credentials | тести, журнал |
+| Поглиблення | відмінний | — | — | не входить до обраного рівня | — |
+
+Ключ ліміту: IP-адреса. Ім'я користувача в ключі дало б змогу будь-кому заблокувати чужий вхід
+п'ятьма запитами. IP зачіпає людей за спільним NAT, тому ліміт невеликий за часом (30 с).
+Виключені з події поля: ім'я з форми (може бути чужим паролем, введеним не в те поле), пароль,
+cookie, hash, тіло запиту, заголовок Authorization.
+
+Канали перебору акаунтів: `POST /api/auth/register` (409 підтверджує зайняте ім'я або email,
+свідомий компроміс заради зрозумілої форми); `POST /api/auth/login` закрито однаковою відмовою і
+лімітом спроб.
+
+## Декларація використання ШІ
+
+ШІ не використовувався. Журнал: не застосовується.
+
+
+# Попередній звіт: лабораторна робота № 2
 
 Виконала: Чубукіна Анна Олександрівна, КБ-41. Повний звіт з рисунками подано окремим файлом .docx.
 
-## 1. Ідентифікація стану
+### 1. Ідентифікація стану
 
 - Варіант: baseline 2-A «Трекер інцидентів», профіль A «Пошук» (індивідуальних варіантів у ЛР 2 немає).
 - Вхід: власний тег `v0.1.0` (`8ba3147`) + scaffold `lab-02-start-v1` (`.scaffolds/lab-02.json`).
@@ -12,7 +88,7 @@
 - Fixed commit (пошук через LINQ ILike, sortBy з allowlist): `0b40b7b`.
 - Фінальний тег: `v0.2.0` (annotated) на останньому коміті гілки; hash тегу записано у звіті .docx.
 
-## 2. Змінені маршрути
+### 2. Змінені маршрути
 
 ```text
 GET /api/incidents/search?q&sortBy&order
@@ -31,7 +107,7 @@ Root cause до виправлення: `src/SecureLab.Api/Scaffolding/Lab02Endp
 `MapGet("/api/incidents/search", ...)`, рядки 21–23 у `202f7b4`: `var sql = "SELECT ... ILIKE '%" + (q ?? "") + ...`
 і `ORDER BY " + order`, потім `FromSqlRaw(sql)`.
 
-## 3. Виконані зміни
+### 3. Виконані зміни
 
 | Файл | Що змінено |
 |---|---|
@@ -49,7 +125,7 @@ Root cause до виправлення: `src/SecureLab.Api/Scaffolding/Lab02Endp
 | `tests/SecureLab.Api.Tests/SeverityBreakdownTests.cs` | лише очікувані числа: Low 3 замість 1 (новий seed) |
 | `tests/http/incident-search-create.http` | ручні сценарії ЛР 2 |
 
-## 4. Перевірка
+### 4. Перевірка
 
 PostgreSQL на моєму ПК слухає 54331 (`infra/.env`), бо 54329 зайнятий іншим локальним сервісом.
 
@@ -68,7 +144,7 @@ PostgreSQL на моєму ПК слухає 54331 (`infra/.env`), бо 54329 з
 
 Автоматична перевірка після останньої зміни коду: `dotnet test ... --configuration Release` — 58 тестів, 58 пройшли.
 
-### A-01. Точки доступу до даних
+#### A-01. Точки доступу до даних
 
 | Файл / метод | Механізм | Категорія | Висновок |
 |---|---|---|---|
@@ -80,7 +156,7 @@ PostgreSQL на моєму ПК слухає 54331 (`infra/.env`), бо 54329 з
 | `DbSeeder`, `Lab02Seed` | LINQ, `AddRange` | trusted static data | лише константи seed |
 | `Program.cs` /health | `CanConnectAsync` | без SQL від клієнта | — |
 
-## 5. Security-сценарій
+### 5. Security-сценарій
 
 1. Контекст і гіпотеза: пошук отримує недовірені `q` і `sortBy` з URL; вони можуть потрапити у структуру SQL.
 2. Стан до: vulnerable commit `202f7b4` (S-01 доданий у `6eb0315`), `Lab02Endpoints.cs`, склеювання рядка `sql` і `FromSqlRaw(sql)`.
@@ -93,7 +169,7 @@ PostgreSQL на моєму ПК слухає 54331 (`infra/.env`), бо 54329 з
 8. Залишковий ризик: немає автентифікації (owner з demo context до ЛР 3), немає пагінації понад LIMIT 50,
    немає унікального обмеження title у БД для паралельних POST, інші endpoint потребують окремого огляду.
 
-## 6. Висновок
+### 6. Висновок
 
 Створення інциденту має явний контракт і перевіряється на сервері. Пошук більше не змішує дані зі структурою
 SQL: значення йде параметром, сортування обирає сервер. 58 тестів зелені, секретів у diff немає.

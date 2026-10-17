@@ -127,6 +127,15 @@ severity, occurredAtUtc) і перевіряє його на сервері: `40
 сценарії: `tests/http/incident-search-create.http`. Опис: `docs/architecture.md`,
 звіт: `docs/report-template.md`.
 
+### Стан після ЛР 3
+
+Встановлено scaffold `lab-03-start-v1`: ASP.NET Core Identity, cookie-схема, чотири
+навчальні акаунти. Пароль акаунтів задається лише змінною `SeedUsers__Password` перед reset і
+тестами. `GET /api/me` і `POST /api/incidents` вимагають входу; поточний користувач і власник
+нового інциденту беруться тільки з перевіреного principal. Є logout, ліміт спроб входу (4 за
+30 секунд з однієї IP, далі 429) і події автентифікації без паролів і cookie. Браузерний клієнт:
+`http://localhost:5080/auth-lab.html`. Ручні сценарії: `tests/http/lab-03-auth.http`.
+
 ## 6. Структура
 
 ```text
