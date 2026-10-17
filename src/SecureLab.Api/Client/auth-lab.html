@@ -1,7 +1,81 @@
 <!doctype html>
-<html lang="uk"><meta charset="utf-8"><title>ЛР 03 — сеанс</title>
-<h1>Навчальний сеанс</h1>
-<form id="login"><label>Ім’я <input name="userName" autocomplete="username" required></label>
-<label>Пароль <input name="password" type="password" autocomplete="current-password" required></label><button>Увійти</button></form>
-<button id="me">Мій профіль</button><button id="logout">Вийти</button><pre id="result"></pre>
-<script src="auth-lab.js" defer></script></html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SecureLab: обліковий запис і сеанс</title>
+  <link rel="stylesheet" href="auth-lab.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Трекер інцидентів</h1>
+    <p class="subtitle">Реєстрація, вхід і робота від імені перевіреного користувача</p>
+  </header>
+
+  <!-- Стан сеансу окремим блоком: його оновлює лише відповідь сервера на /api/me. -->
+  <section id="session-box" class="session" data-state="unknown" aria-live="polite">
+    <span class="session-label">Стан сеансу:</span>
+    <strong id="session-text">перевіряю...</strong>
+    <button id="signout-button" type="button" class="secondary">Завершити сеанс</button>
+  </section>
+
+  <main class="grid">
+    <section class="card">
+      <h2>Новий обліковий запис</h2>
+      <form id="signup-form" autocomplete="off">
+        <label>Ім'я користувача <input name="userName" required minlength="4" maxlength="40" autocomplete="username"></label>
+        <label>Email <input name="email" type="email" required maxlength="120" autocomplete="email"></label>
+        <label>Як до вас звертатися <input name="displayName" required minlength="2" maxlength="80"></label>
+        <label>Пароль <input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+        <button type="submit">Зареєструватися</button>
+      </form>
+      <p id="signup-note" class="note"></p>
+    </section>
+
+    <section class="card">
+      <h2>Вхід</h2>
+      <form id="signin-form">
+        <label>Ім'я користувача <input name="userName" required autocomplete="username"></label>
+        <label>Пароль <input name="password" type="password" required autocomplete="current-password"></label>
+        <button type="submit">Увійти</button>
+      </form>
+      <p id="signin-note" class="note"></p>
+    </section>
+
+    <section id="profile-card" class="card profile" hidden>
+      <h2>Мій профіль</h2>
+      <dl>
+        <dt>Ідентифікатор</dt><dd id="profile-id"></dd>
+        <dt>Ім'я користувача</dt><dd id="profile-name"></dd>
+        <dt>Ролі</dt><dd id="profile-roles"></dd>
+      </dl>
+    </section>
+
+    <section id="incident-card" class="card">
+      <h2>Повідомити про інцидент</h2>
+      <form id="incident-form">
+        <label>Заголовок <input name="title" required maxlength="160"></label>
+        <label>Опис <textarea name="description" required rows="3" maxlength="4000"></textarea></label>
+        <label>Рівень
+          <select name="severity">
+            <option value="Low">Low</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+          </select>
+        </label>
+        <label>Коли сталося <input name="occurredAt" type="datetime-local" required></label>
+        <button type="submit">Надіслати інцидент</button>
+      </form>
+      <p id="incident-note" class="note"></p>
+    </section>
+  </main>
+
+  <section class="card journal">
+    <h2>Журнал запитів</h2>
+    <ol id="request-journal"></ol>
+  </section>
+
+  <script type="module" src="auth-lab.js"></script>
+</body>
+</html>

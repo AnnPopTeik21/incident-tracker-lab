@@ -44,14 +44,34 @@ public static class Lab03Identity
             .Produces<SignUpResult>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status409Conflict);
-        app.MapPost("/api/auth/login", async (LoginInput input, SignInManager<ApplicationUser> signIn) =>
+        // Відмова однакова для невідомого імені й хибного пароля: той самий 401 без причини.
+        // Ліміт спроб (політика "login") стоїть перед кодом endpoint.
+        app.MapPost("/api/auth/login", async (LoginInput input, SignInManager<ApplicationUser> signIn, HttpContext http) =>
         {
             if (string.IsNullOrWhiteSpace(input.UserName) || string.IsNullOrEmpty(input.Password))
+            {
+                AuthAuditLog.LoginRejected(http);
                 return Results.Unauthorized();
+            }
             var result = await signIn.PasswordSignInAsync(input.UserName, input.Password, false, false);
-            return result.Succeeded ? Results.NoContent() : Results.Unauthorized();
-        });
-        app.MapPost("/api/auth/logout", () => Results.StatusCode(StatusCodes.Status501NotImplemented));
+            if (!result.Succeeded)
+            {
+                AuthAuditLog.LoginRejected(http);
+                return Results.Unauthorized();
+            }
+            var user = await signIn.UserManager.FindByNameAsync(input.UserName);
+            AuthAuditLog.LoginSucceeded(http, user?.Id ?? Guid.Empty);
+            return Results.NoContent();
+        }).RequireRateLimiting(LoginThrottling.PolicyName);
+        // ЛР 3, добрий рівень: стандартний sign-out Identity. Відповідь видаляє cookie через Set-Cookie.
+        // Повторний logout без cookie теж дає 204: вийти вдруге не помилка.
+        app.MapPost("/api/auth/logout", async (SignInManager<ApplicationUser> signIn, HttpContext http) =>
+        {
+            Guid? userId = VerifiedUser.TryGetId(http.User, out var id) ? id : null;
+            await signIn.SignOutAsync();
+            AuthAuditLog.SignedOut(http, userId);
+            return Results.NoContent();
+        }).WithTags("Auth");
         // ЛР 3: профіль лише з перевіреного principal; заголовок X-Demo-UserId більше нічого не означає.
         app.MapGet("/api/me", GetCurrentUser)
             .WithTags("Auth")
@@ -61,11 +81,15 @@ public static class Lab03Identity
         app.MapGet("/api/auth/session-check", () => Results.NoContent()).RequireAuthorization();
     }
 
-    private static async Task<IResult> SignUpAsync(SignUpRequest request, UserManager<ApplicationUser> users)
+    private static async Task<IResult> SignUpAsync(
+        SignUpRequest request,
+        UserManager<ApplicationUser> users,
+        HttpContext http)
     {
         var draft = SignUpRules.Check(request, out var problems);
         if (draft is null)
         {
+            AuthAuditLog.SignUpRefused(http, "format");
             return Results.ValidationProblem(problems);
         }
 
@@ -77,18 +101,22 @@ public static class Lab03Identity
         var result = await users.CreateAsync(user, draft.Password);
         if (!result.Succeeded)
         {
-            return MapIdentityRefusal(result);
+            var refusal = MapIdentityRefusal(result, out var reason);
+            AuthAuditLog.SignUpRefused(http, reason);
+            return refusal;
         }
 
         var role = await users.AddToRoleAsync(user, DbSeeder.ReporterRole);
         if (!role.Succeeded) throw new InvalidOperationException("Default role assignment failed.");
+        AuthAuditLog.SignUpCompleted(http, user.Id);
         return Results.Created("/api/me", new SignUpResult(user.Id, draft.UserName, draft.DisplayName));
     }
 
     // Контракт відмов: зайняте ім'я або email дає 409 з однаковим текстом для обох випадків,
     // слабкий пароль чи недозволений формат дає 400 з ключем поля. Пароль у відповідь не потрапляє.
-    private static IResult MapIdentityRefusal(IdentityResult result)
+    private static IResult MapIdentityRefusal(IdentityResult result, out string reason)
     {
+        reason = "identity-policy";
         var codes = result.Errors.Select(error => error.Code).ToHashSet(StringComparer.Ordinal);
         var problems = new Dictionary<string, string[]>();
         if (codes.Any(code => code.StartsWith("Password", StringComparison.Ordinal)))
@@ -110,6 +138,7 @@ public static class Lab03Identity
         }
         if (codes.Contains("DuplicateUserName") || codes.Contains("DuplicateEmail"))
         {
+            reason = "duplicate";
             return Results.Problem(
                 title: "Реєстрацію не завершено",
                 detail: "Обліковий запис з таким ім'ям користувача або email уже існує.",

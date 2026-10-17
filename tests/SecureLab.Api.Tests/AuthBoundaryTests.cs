@@ -127,4 +127,37 @@ public sealed class AuthBoundaryTests(SecureLabApiFactory factory) : IClassFixtu
         // traceId діагностичний: він є в обох відповідях, але рівним бути не мусить.
         Assert.True(a.HasTraceId && b.HasTraceId);
     }
+
+    // Події входу і виходу: результат, userId після успіху і trace id. Ні імені з форми,
+    // ні пароля, ні cookie, ні hash немає в жодному рядку журналу host.
+    [Fact]
+    public async Task AuthEvents_CarryOutcomeAndTrace_ButNoSecrets()
+    {
+        var sink = new MemoryLogSink();
+        using var host = TestHosts.Fresh(factory, logSink: sink);
+        using var client = TestHosts.HttpsClient(host);
+        var wrongPassword = "Nope-" + Guid.NewGuid().ToString("N")[..8] + "K3";
+
+        using var refused = await TestHosts.LoginAsync(client, "alice", wrongPassword);
+        using var accepted = await TestHosts.LoginAsync(client, "alice", StudySecret.Password);
+        using var logout = await client.PostAsync("/api/auth/logout", content: null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+        var refusedTrace = (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("traceId").GetString();
+        var audit = sink.Entries.Where(entry => entry.Category == "SecureLab.AuthAudit").Select(entry => entry.Message).ToArray();
+        Assert.Contains(audit, line => line.StartsWith("auth.login result=rejected", StringComparison.Ordinal)
+            && line.EndsWith($"trace={refusedTrace}", StringComparison.Ordinal));
+        Assert.Contains(audit, line => line.StartsWith($"auth.login result=success userId={DbSeeder.AliceId}", StringComparison.Ordinal));
+        Assert.Contains(audit, line => line.StartsWith($"auth.logout result=done userId={DbSeeder.AliceId}", StringComparison.Ordinal));
+        Assert.DoesNotContain(audit, line => line.Contains("alice", StringComparison.OrdinalIgnoreCase));
+        foreach (var (_, message) in sink.Entries)
+        {
+            Assert.False(message.Contains(StudySecret.Password, StringComparison.Ordinal), "Пароль потрапив у журнал.");
+            Assert.False(message.Contains(wrongPassword, StringComparison.Ordinal), "Пароль потрапив у журнал.");
+            Assert.False(message.Contains(".AspNetCore.Identity", StringComparison.Ordinal), "Cookie потрапила в журнал.");
+            Assert.False(message.Contains("AQAAAA", StringComparison.Ordinal), "Hash потрапив у журнал.");
+        }
+    }
 }

@@ -4,6 +4,7 @@ using Scalar.AspNetCore;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data;
 using SecureLab.Api.Presentation.Endpoints;
+using SecureLab.Api.Security;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -32,6 +33,8 @@ builder.Services.AddScoped<IncidentSearchQuery>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.AddLab03Identity();
+// ЛР 3, добрий рівень: обмеження спроб входу (політика "login", фіксоване вікно, ключ IP).
+builder.AddLoginThrottling();
 
 var app = builder.Build();
 
@@ -61,6 +64,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();

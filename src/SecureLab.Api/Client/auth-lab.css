@@ -1,0 +1,26 @@
+:root { --ink: #1f2933; --muted: #52606d; --line: #cbd2d9; --ok: #1f7a4d; --off: #8a1c1c; --wait: #8a6d1c; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.45 "Segoe UI", Arial, sans-serif; color: var(--ink); background: #f5f7fa; }
+.topbar { padding: 18px 28px 10px; background: #243b53; color: #fff; }
+.topbar h1 { margin: 0; font-size: 22px; }
+.subtitle { margin: 4px 0 0; color: #d9e2ec; }
+.session { display: flex; align-items: center; gap: 10px; margin: 16px 28px 0; padding: 10px 14px;
+  border-left: 6px solid var(--wait); background: #fff; }
+.session[data-state="signed-in"] { border-left-color: var(--ok); }
+.session[data-state="anonymous"] { border-left-color: var(--off); }
+.session-label { color: var(--muted); }
+.session button { margin-left: auto; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 16px 28px; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 14px 18px; }
+.card h2 { margin: 0 0 10px; font-size: 17px; }
+label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 13px; }
+input, textarea, select { display: block; width: 100%; margin-top: 3px; padding: 6px 8px; font: inherit;
+  border: 1px solid var(--line); border-radius: 4px; color: var(--ink); }
+button { padding: 7px 14px; font: inherit; border: 0; border-radius: 4px; background: #334e68; color: #fff; cursor: pointer; }
+button.secondary { background: #e4e7eb; color: var(--ink); }
+.note { min-height: 1.4em; margin: 8px 0 0; font-size: 13px; }
+.profile dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+.profile dt { color: var(--muted); }
+.profile dd { margin: 0; font-family: Consolas, "Courier New", monospace; }
+.journal { margin: 0 28px 24px; }
+.journal ol { margin: 0; padding-left: 22px; font-family: Consolas, "Courier New", monospace; font-size: 13px; }
