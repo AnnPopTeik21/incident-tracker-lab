@@ -60,6 +60,22 @@
 | Rate limit і події | добрий | 5-та спроба, вікно, журнал | 429, відновлення | 429 + Retry-After навіть для правильного пароля; через вікно 204; події без credentials | тести, журнал |
 | Поглиблення | відмінний | — | — | не входить до обраного рівня | — |
 
+Контрольні точки:
+
+- CP-01: `SignUpRequest` і `SignUpResult` у `AccountContracts.cs`, виклик `UserManager.CreateAsync`
+  у `Lab03Identity.cs`; відповідь 201 містить лише id, userName, displayName; повтор імені або
+  email дає 409 з одним текстом (тест `SignUpContractTests`).
+- CP-02: після входу сервер ставить cookie `.AspNetCore.Identity.Application` з атрибутами
+  `path=/; samesite=lax; httponly` (HTTP) і ще `secure` (HTTPS); значення cookie не записувалось.
+- CP-03: анонімний `POST /api/incidents` дає 401; той самий запит з cookie Аліси і
+  `ownerUserId` Боба створює запис, власник якого Аліса. Тест `OwnerFromPrincipalTests` (A-05) зелений.
+
+Пояснення: пароль перевіряє лише `SignInManager.PasswordSignInAsync` через `PasswordHasher`
+Identity, hash не виходить за межі таблиці `identity_users` і не входить у жоден DTO. Cookie
+options задає `ConfigureApplicationCookie` у `Lab03Identity.cs`; локальний HTTP не доводить
+`Secure`, бо браузер отримує його лише в HTTPS. Id з body чи заголовка клієнт може вписати
+будь-який, тому сервер бере особу лише з `HttpContext.User`, який сформувала перевірена cookie.
+
 Ключ ліміту: IP-адреса. Ім'я користувача в ключі дало б змогу будь-кому заблокувати чужий вхід
 п'ятьма запитами. IP зачіпає людей за спільним NAT, тому ліміт невеликий за часом (30 с).
 Виключені з події поля: ім'я з форми (може бути чужим паролем, введеним не в те поле), пароль,
