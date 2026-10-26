@@ -65,13 +65,14 @@ public static class Lab03Identity
         }).RequireRateLimiting(LoginThrottling.PolicyName);
         // ЛР 3, добрий рівень: стандартний sign-out Identity. Відповідь видаляє cookie через Set-Cookie.
         // Повторний logout без cookie теж дає 204: вийти вдруге не помилка.
+        // Відмінний рівень: без CSRF-токена чужий сайт не завершить сеанс людини, тому 400.
         app.MapPost("/api/auth/logout", async (SignInManager<ApplicationUser> signIn, HttpContext http) =>
         {
             Guid? userId = VerifiedUser.TryGetId(http.User, out var id) ? id : null;
             await signIn.SignOutAsync();
             AuthAuditLog.SignedOut(http, userId);
             return Results.NoContent();
-        }).WithTags("Auth");
+        }).WithTags("Auth").RequireForgeryToken();
         // ЛР 3: профіль лише з перевіреного principal; заголовок X-Demo-UserId більше нічого не означає.
         app.MapGet("/api/me", GetCurrentUser)
             .WithTags("Auth")

@@ -19,3 +19,8 @@ public sealed record MeResponse(
     Guid UserId,
     string UserName,
     IReadOnlyList<string> Roles);
+
+// CSRF-токен для змінювальних запитів: назва заголовка і сам токен. Cookie сеансу тут немає.
+public sealed record CsrfTokenResponse(
+    string HeaderName,
+    string Token);

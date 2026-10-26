@@ -22,6 +22,8 @@ public static class Lab02Endpoints
             .WithName("CreateIncident")
             .WithTags("Incidents")
             .RequireAuthorization()
+            // Відмінний рівень: змінювальний запит з cookie має нести CSRF-токен у X-CSRF-TOKEN.
+            .RequireForgeryToken()
             .Produces<IncidentCreatedDto>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status401Unauthorized)

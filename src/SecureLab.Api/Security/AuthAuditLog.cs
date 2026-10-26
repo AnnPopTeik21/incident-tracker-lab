@@ -20,6 +20,9 @@ public static partial class AuthAuditLog
     public static void SignedOut(HttpContext http, Guid? userId) =>
         LogSignedOut(For(http), userId, Now(http), TraceOf(http));
 
+    public static void ForgeryRejected(HttpContext http) =>
+        LogForgeryRejected(For(http), http.Request.Method, http.Request.Path.Value ?? "", Now(http), TraceOf(http));
+
     public static void SignUpCompleted(HttpContext http, Guid userId) =>
         LogSignUpCompleted(For(http), userId, Now(http), TraceOf(http));
 
@@ -58,4 +61,8 @@ public static partial class AuthAuditLog
     [LoggerMessage(EventId = 3106, Level = LogLevel.Information,
         Message = "auth.signup result=refused reason={Reason} at={AtUtc:O} trace={TraceId}")]
     private static partial void LogSignUpRefused(ILogger logger, string reason, DateTimeOffset atUtc, string traceId);
+
+    [LoggerMessage(EventId = 3107, Level = LogLevel.Warning,
+        Message = "auth.csrf result=rejected method={Method} path={Path} at={AtUtc:O} trace={TraceId}")]
+    private static partial void LogForgeryRejected(ILogger logger, string method, string path, DateTimeOffset atUtc, string traceId);
 }

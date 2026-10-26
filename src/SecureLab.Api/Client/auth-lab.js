@@ -15,10 +15,26 @@ async function callApi(path, options = {}) {
   return response;
 }
 
+// CSRF-токен живе лише в змінній цієї сторінки. Він прив'язаний до користувача,
+// тому після кожної перевірки сеансу (вхід, вихід, перезавантаження) я беру його заново.
+let csrf = null;
+
+async function loadCsrfToken() {
+  csrf = null;
+  const response = await callApi("/api/auth/csrf");
+  if (response.ok && isJson(response)) {
+    csrf = await response.json();
+  }
+}
+
+function withCsrf(headers = {}) {
+  return csrf ? { ...headers, [csrf.headerName]: csrf.token } : headers;
+}
+
 function postJson(path, payload) {
   return callApi(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: withCsrf({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload)
   });
 }
@@ -75,6 +91,7 @@ async function refreshSession() {
   } else {
     showUnknown(response.status);
   }
+  await loadCsrfToken();
 }
 
 // Реєстрація: 201 не означає входу, тому далі пропоную увійти.
@@ -142,7 +159,13 @@ $("#incident-form").addEventListener("submit", async event => {
     showAnonymous();
   } else if (response.status === 400 && isJson(response)) {
     const problem = await response.json();
-    say("#incident-note", Object.values(problem.errors ?? {}).flat().join(" "));
+    if (problem.errors) {
+      say("#incident-note", Object.values(problem.errors).flat().join(" "));
+    } else {
+      // Токен застарів, наприклад після повторного входу в іншій вкладці.
+      say("#incident-note", "Сторінка оновила захисний токен. Надішліть форму ще раз.");
+      await loadCsrfToken();
+    }
   } else {
     say("#incident-note", `Інцидент не створено (${response.status}).`);
   }
@@ -150,7 +173,7 @@ $("#incident-form").addEventListener("submit", async event => {
 
 // Вихід: спершу серверний sign-out, потім очищення сторінки і повторна перевірка /api/me.
 $("#signout-button").addEventListener("click", async () => {
-  const response = await callApi("/api/auth/logout", { method: "POST" });
+  const response = await callApi("/api/auth/logout", { method: "POST", headers: withCsrf() });
   for (const id of ["#signin-note", "#signup-note", "#incident-note"]) say(id, "");
   $("#incident-form").reset();
   say("#signin-note", response.status === 204 ? "Сеанс завершено на сервері." : `Вихід: ${response.status}`);

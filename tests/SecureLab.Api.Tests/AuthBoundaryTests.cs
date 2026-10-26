@@ -140,6 +140,7 @@ public sealed class AuthBoundaryTests(SecureLabApiFactory factory) : IClassFixtu
 
         using var refused = await TestHosts.LoginAsync(client, "alice", wrongPassword);
         using var accepted = await TestHosts.LoginAsync(client, "alice", StudySecret.Password);
+        await client.AttachCsrfTokenAsync();
         using var logout = await client.PostAsync("/api/auth/logout", content: null);
 
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);

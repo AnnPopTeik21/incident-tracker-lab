@@ -35,6 +35,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.AddLab03Identity();
 // ЛР 3, добрий рівень: обмеження спроб входу (політика "login", фіксоване вікно, ключ IP).
 builder.AddLoginThrottling();
+// ЛР 3, відмінний рівень: строк дії сеансу 20 хв зі sliding і CSRF-токен для змінювальних запитів.
+builder.AddSessionLifetime();
+builder.AddForgeryGuard();
 
 var app = builder.Build();
 
@@ -81,6 +84,7 @@ app.MapGet("/health", async (SecureLabDbContext dbContext, CancellationToken can
 
 app.MapIncidentEndpoints();
 app.MapLab03Identity();
+app.MapForgeryTokenEndpoint();
 app.MapLab02Endpoints();
 app.MapFallbackToFile("index.html");
 

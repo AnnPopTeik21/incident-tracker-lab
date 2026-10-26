@@ -33,6 +33,10 @@ Content-Type: application/json
   "password": "{{$processEnv SeedUsers__Password}}"
 }
 
+### 4a. CSRF-токен для змінювальних запитів: брати після входу (старий токен належить анонімові)
+# @name csrf
+GET {{host}}/api/auth/csrf
+
 ### 5. Профіль з cookie і чужим заголовком: очікувано 200 і userId Аліси
 GET {{host}}/api/me
 X-Demo-UserId: {{bobId}}
@@ -40,6 +44,7 @@ X-Demo-UserId: {{bobId}}
 ### 6. Створення з підробленим власником: очікувано 201, власник Аліса
 POST {{host}}/api/incidents
 Content-Type: application/json
+X-CSRF-TOKEN: {{csrf.response.body.token}}
 
 {
   "title": "Перевірка власника з principal",
@@ -57,3 +62,19 @@ Content-Type: application/json
   "userName": "nobody-here",
   "password": "{{$processEnv SeedUsers__Password}}"
 }
+
+### 8. Та сама cookie Аліси, але без CSRF-токена: очікувано 400, запис не з'являється
+POST {{host}}/api/incidents
+Content-Type: application/json
+
+{
+  "title": "Запит без CSRF-токена",
+  "description": "Так виглядав би запит з чужої сторінки.",
+  "severity": "Low",
+  "occurredAtUtc": "2026-10-26T18:00:00Z"
+}
+
+### 9. Вихід з токеном: очікувано 204; без заголовка був би 400
+POST {{host}}/api/auth/logout
+X-CSRF-TOKEN: {{csrf.response.body.token}}
+
