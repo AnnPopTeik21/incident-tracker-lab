@@ -12,7 +12,7 @@ cookie-сеанс і те, звідки сервер бере поточного
 | Browser client | `src/SecureLab.Api/Client/` (`index.html`, `app.js`, `styles.css`) | Форма і кнопки, `fetch` до API, показ відповіді через `textContent` |
 | Browser client сеансу (ЛР 3) | `Client/auth-lab.html`, `auth-lab.js`, `auth-lab.css` | Реєстрація, вхід, стан сеансу, профіль, створення інциденту, вихід; cookie не читає |
 | Identity і cookie (ЛР 3) | `Scaffolding/Lab03Identity.cs`, `Data/Entities/ApplicationUser.cs` | Облікові записи, перевірка пароля, cookie-схема `Identity.Application`, `/api/auth/*`, `/api/me` |
-| Security (ЛР 3) | `Security/VerifiedUser.cs`, `Security/LoginThrottling.cs`, `Security/AuthAuditLog.cs` | Id лише з principal, ліміт спроб входу, події автентифікації |
+| Security (ЛР 3) | `Security/VerifiedUser.cs`, `Security/LoginThrottling.cs`, `Security/AuthAuditLog.cs`, `Security/SessionLifetime.cs`, `Security/ForgeryGuard.cs` | Id лише з principal, ліміт спроб входу, події автентифікації, строк сеансу 20 хв зі sliding, CSRF-токен для змінювальних запитів |
 | ASP.NET Core API, рівень Presentation | `Presentation/Endpoints/IncidentEndpoints.cs`, `Presentation/Contracts/` | Маршрути, перевірка параметрів запиту, HTTP-коди, контракти відповіді |
 | Application | `Application/Incidents/IncidentQueries.cs`, `Application/Incidents/SeverityBreakdownQuery.cs` | Сценарії читання: список, деталі, підсумок за severity |
 | EF Core (Data) | `Data/SecureLabDbContext.cs`, `Data/Entities/`, `Data/Migrations/` | Відображення класів C# на таблиці, побудова SQL-запитів |
@@ -125,20 +125,41 @@ GET /api/me   RequireAuthorization()
   → без cookie 401 Problem Details (OnRedirectToLogin, без 302)
   → MeResponse {userId, userName, roles} лише з claims; X-Demo-UserId не читається
 
-POST /api/auth/logout
+GET /api/auth/csrf
+  → IAntiforgery.GetAndStoreTokens → 200 {headerName: "X-CSRF-TOKEN", token} + Set-Cookie SecureLab.Csrf
+    (HttpOnly, SameSite=Strict), Cache-Control: no-store; токен прив'язаний до поточного principal
+
+POST /api/auth/logout   RequireForgeryToken()
+  → без чинного X-CSRF-TOKEN 400 Problem Details, сеанс лишається; подія auth.csrf result=rejected
   → SignInManager.SignOutAsync() → 204 + Set-Cookie з expires=1970 → наступний /api/me дає 401
 
-POST /api/incidents   RequireAuthorization()
+POST /api/incidents   RequireAuthorization() → RequireForgeryToken()
+  → без cookie 401 (автентифікація стоїть раніше за фільтр токена)
+  → cookie без токена, з чужим або застарілим токеном → 400 Problem Details, запис не створено
   → ownerUserId = VerifiedUser.TryGetId(HttpContext.User); поле ownerUserId у JSON не входить у DTO
 ```
 
-Налаштування cookie (надані scaffold, не змінювались): `HttpOnly = true`, `SameSite = Lax`,
-`SecurePolicy = SameAsRequest` у Development і `Always` поза ним, строк дії стандартний (14 днів
-з продовженням), cookie сеансова (без `expires`). Локальний HTTP не доводить `Secure`: атрибут
-з'являється лише в HTTPS-запиті, це перевіряє `SessionCookieTests`.
+Налаштування cookie від scaffold: `HttpOnly = true`, `SameSite = Lax`, `SecurePolicy = SameAsRequest`
+у Development і `Always` поза ним, cookie сеансова (без `expires`). Локальний HTTP не доводить
+`Secure`: атрибут з'являється лише в HTTPS-запиті, це перевіряє `SessionCookieTests`.
 
-Залишкові ризики: CSRF для запитів, що змінюють дані, лише частково закриває `SameSite=Lax`
-(повна модель у ЛР 6). Реєстрація з відповіддю 409 підтверджує, що ім'я або email зайняті
+Строк дії (відмінний рівень, `Security/SessionLifetime.cs`): замість стандартних 14 днів
+`ExpireTimeSpan` 20 хвилин (`Auth:Session:IdleMinutes`) і `SlidingExpiration = true`. Час завершення
+лежить у зашифрованому квитку, тому сервер відкидає прострочену cookie, навіть якщо браузер її
+надіслав. Після половини строку сервер видає квиток заново. Перевірка: `SessionLifetimeTests`
+з підміною годинника схеми cookie, без очікування.
+
+CSRF-модель (відмінний рівень, `Security/ForgeryGuard.cs`): synchronizer token ASP.NET Core
+Antiforgery. Змінювальні запити з cookie (`POST /api/incidents`, `POST /api/auth/logout`) несуть
+токен у `X-CSRF-TOKEN`. Чужа сторінка не прочитає `GET /api/auth/csrf`, бо CORS не ввімкнено.
+`SameSite=Lax` лишається першим шаром: він не пускає cookie в POST з іншого сайту, але не
+розрізняє піддомени одного сайту. Register і login без токена: вони анонімні, приймають лише
+`application/json`, а такий міжсайтовий запит браузер без дозволу CORS не надішле. Перевірка:
+`ForgedRequestTests`.
+
+Залишкові ризики: XSS на власному origin прочитав би токен, тож токен не замінює `textContent` і
+CSP. Строк сеансу лише за бездіяльністю: активний викрадений квиток продовжується, абсолютного
+максимуму немає. Реєстрація з відповіддю 409 підтверджує, що ім'я або email зайняті
 (свідомий компроміс заради зрозумілої форми). Ліміт входів живе в пам'яті одного процесу.
 
 ## Межі довіри
@@ -152,6 +173,7 @@ POST /api/incidents   RequireAuthorization()
 | відповідь → DOM | текст із JSON (назви рівнів, description) | що текст із бази безпечний як HTML | лише `textContent` і `document.createTextNode`; тест `ClientScript_DoesNotUseDangerousInnerHtmlSink` |
 | cookie → principal (ЛР 3) | зашифрована cookie сеансу | що заголовок `X-Demo-UserId`, query чи поле body доводять особу | cookie розшифровує обробник схеми; id лише з `HttpContext.User`; `.RequireAuthorization()` на `/api/me` і `POST /api/incidents` |
 | форма входу → API (ЛР 3) | userName, password | що повторні спроби входу безкоштовні | ліміт 4 спроби за 30 с з однієї IP; відмова однакова для будь-якого імені |
+| чужий сайт → API з cookie (ЛР 3) | POST, який браузер надсилає з cookie людини | що cookie в запиті означає намір людини | `SameSite=Lax`, JSON-контракт без CORS, токен `X-CSRF-TOKEN` на `POST /api/incidents` і logout |
 | API → журнал (ЛР 3) | події входу, виходу, реєстрації | що у журнал можна писати форму запиту | `AuthAuditLog`: лише тип події, результат, час, userId після успіху, trace id |
 | конфігурація → API | connection string, `ASPNETCORE_ENVIRONMENT` | що локальні навчальні значення підходять деінде | реальні значення лише через змінну середовища, `infra/.env` у `.gitignore` |
 
@@ -166,6 +188,7 @@ POST /api/incidents   RequireAuthorization()
 | `src/SecureLab.Api/Properties/launchSettings.json` | URL `http://localhost:5080`, середовище Development | `dotnet run` |
 | `infra/compose.yaml` + `infra/.env.example` або локальний `infra/.env` | образ PostgreSQL, порт на 127.0.0.1, навчальні облікові дані | Docker Compose |
 | секція `Auth:LoginThrottle` в `appsettings.json` | ліміт входів: `PermitLimit` 4, `WindowSeconds` 30 | `LoginThrottling` через `IOptions` |
+| секція `Auth:Session` в `appsettings.json` | строк сеансу без активності: `IdleMinutes` 20 (дозволено 1–120) | `SessionLifetime` через `IOptions` |
 | змінна середовища `SeedUsers__Password` | пароль чотирьох навчальних акаунтів під час seed і в тестах; у Git його немає | `DbSeeder`, тести |
 | змінна середовища `ConnectionStrings__SecureLab` | перевизначає connection string без змін у Git | конфігурація ASP.NET Core (має пріоритет над appsettings) |
 
