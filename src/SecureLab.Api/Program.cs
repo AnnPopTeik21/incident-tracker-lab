@@ -30,6 +30,7 @@ builder.Services.AddScoped<IncidentQueries>();
 builder.Services.AddScoped<SeverityBreakdownQuery>();
 builder.Services.AddScoped<IncidentCreationService>();
 builder.Services.AddScoped<IncidentSearchQuery>();
+builder.Services.AddScoped<IncidentChangeService>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.AddLab03Identity();
@@ -83,6 +84,7 @@ app.MapGet("/health", async (SecureLabDbContext dbContext, CancellationToken can
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
 app.MapIncidentEndpoints();
+app.MapIncidentChangeEndpoints();
 app.MapLab03Identity();
 app.MapForgeryTokenEndpoint();
 app.MapLab02Endpoints();

