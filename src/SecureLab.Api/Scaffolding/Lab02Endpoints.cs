@@ -1,3 +1,4 @@
+using SecureLab.Api.Application.Access;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Presentation.Contracts;
 using SecureLab.Api.Security;
@@ -13,6 +14,8 @@ public static class Lab02Endpoints
         app.MapGet("/api/incidents/search", SearchIncidentsAsync)
             .WithName("SearchIncidents")
             .WithTags("Incidents")
+            // ЛР 4: пошук лише для того, хто ввійшов, і лише в межах дозволених йому записів.
+            .RequireAuthorization()
             .Produces<IReadOnlyList<IncidentSearchItemDto>>()
             .ProducesValidationProblem();
 
@@ -34,9 +37,15 @@ public static class Lab02Endpoints
         string? q,
         string? sortBy,
         string? order,
+        HttpContext httpContext,
         IncidentSearchQuery search,
         CancellationToken cancellationToken)
     {
+        if (!CallerProfile.TryRead(httpContext.User, out var caller))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
+
         // Невідомий ключ сортування зупиняється тут і до SQL не доходить.
         var ordering = IncidentSearchQuery.ResolveOrdering(sortBy, order, out var problems);
         if (ordering is null)
@@ -44,7 +53,7 @@ public static class Lab02Endpoints
             return Results.ValidationProblem(problems);
         }
 
-        return Results.Ok(await search.FindAsync(q, ordering, cancellationToken));
+        return Results.Ok(await search.FindAsync(q, ordering, caller, cancellationToken));
     }
 
     private static async Task<IResult> CreateIncidentAsync(

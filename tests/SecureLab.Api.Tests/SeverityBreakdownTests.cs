@@ -7,11 +7,21 @@ namespace SecureLab.Api.Tests;
 
 // Тести спираються на відомий seed: після scaffold ЛР 2 Low = 3 (два нові Low-інциденти), Medium = 1, High = 1, Critical немає.
 // Перед запуском після ручних експериментів потрібен --reset-database.
+// ЛР 4: підсумок вимагає входу і рахує лише дозволені записи. Analyst Morgan бачить усі п'ять,
+// тому механіку політики ЛР 1 (усі рівні, нулі, фільтр) перевіряємо від його імені.
 public sealed class SeverityBreakdownTests(SecureLabApiFactory factory)
-    : IClassFixture<SecureLabApiFactory>
+    : IClassFixture<SecureLabApiFactory>, IAsyncLifetime
 {
     private const string BreakdownUrl = "/api/incidents/severity-summary";
-    private readonly HttpClient _http = factory.CreateClient();
+    private HttpClient _http = null!;
+
+    public async Task InitializeAsync() => _http = await factory.LoginAsync("morgan", StudySecret.Password);
+
+    public Task DisposeAsync()
+    {
+        _http.Dispose();
+        return Task.CompletedTask;
+    }
 
     [Fact]
     public async Task Seed_GivesAllFourLevels_FromLowToCritical_WithZeroForCritical()

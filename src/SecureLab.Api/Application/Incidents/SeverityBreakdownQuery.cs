@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SecureLab.Api.Application.Access;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
 using SecureLab.Api.Presentation.Contracts;
@@ -13,13 +14,16 @@ namespace SecureLab.Api.Application.Incidents;
 /// </summary>
 public sealed class SeverityBreakdownQuery(
     SecureLabDbContext dbContext,
+    IncidentScope scope,
     ILogger<SeverityBreakdownQuery> logger)
 {
     public async Task<IReadOnlyList<SeverityCountDto>> CountBySeverityAsync(
         IncidentStatus? statusFilter,
+        CallerProfile caller,
         CancellationToken cancellationToken)
     {
-        var incidents = dbContext.Incidents.AsNoTracking();
+        // ЛР 4: рахуються лише дозволені caller записи. Умова стоїть до GroupBy, у самому SQL.
+        var incidents = scope.VisibleTo(dbContext.Incidents.AsNoTracking(), caller);
         if (statusFilter is { } requiredStatus)
         {
             incidents = incidents.Where(incident => incident.Status == requiredStatus);

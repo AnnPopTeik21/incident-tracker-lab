@@ -138,6 +138,16 @@ severity, occurredAtUtc) і перевіряє його на сервері: `40
 `GET /api/auth/csrf` у заголовку `X-CSRF-TOKEN`. Браузерний клієнт:
 `http://localhost:5080/auth-lab.html`. Ручні сценарії: `tests/http/lab-03-auth.http`.
 
+### Стан після ЛР 4
+
+Уся група `/api/incidents` і пошук вимагають входу. Право на конкретний інцидент вирішує
+`Application/Access/IncidentAccessGuard.cs`, переліки (list, search, severity-summary) обмежує
+`IncidentScope`: Reporter бачить свої записи, Analyst усі. Нові маршрути: `PATCH` і `DELETE`
+`/api/incidents/{id}`, `POST /api/incidents/{id}/triage` (лише Analyst, лише New -> Triaged) і
+`GET /api/incident-comments/{id}`. Чужий запис дає 403, неіснуючий 404. Відмова в зміні пише подію
+`authorization.denied` (категорія `SecureLab.AccessAudit`). Матриця: `docs/access-matrix.md`,
+сценарій PoC і retest: `tests/http/lab-04-access.http`, звіт: `docs/report-lab-04.md`.
+
 ## 6. Структура
 
 ```text

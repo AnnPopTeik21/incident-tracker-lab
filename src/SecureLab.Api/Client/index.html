@@ -42,6 +42,13 @@
 
     <section class="panel" aria-labelledby="details-title">
       <h2 id="details-title">Деталі</h2>
+      <!-- ЛР 4: відкрити запис за id. Рішення, показувати чи ні, приймає лише сервер. -->
+      <form id="direct-id-form" class="direct-id">
+        <label for="direct-id-input">Відкрити за id</label>
+        <input id="direct-id-input" name="incidentId" autocomplete="off" spellcheck="false"
+               placeholder="20000000-0000-0000-0000-000000000002">
+        <button type="submit">Відкрити</button>
+      </form>
       <div id="incident-details" class="details-placeholder">
         Виберіть інцидент зі списку.
       </div>

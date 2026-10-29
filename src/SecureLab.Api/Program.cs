@@ -1,6 +1,7 @@
 using SecureLab.Api.Scaffolding;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using SecureLab.Api.Application.Access;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data;
 using SecureLab.Api.Presentation.Endpoints;
@@ -26,6 +27,9 @@ var connectionString = builder.Configuration.GetConnectionString("SecureLab")
 
 builder.Services.AddDbContext<SecureLabDbContext>(options =>
     options.UseNpgsql(connectionString));
+// ЛР 4: сторож правил доступу і обмеження переліків. Без стану, тому один екземпляр на застосунок.
+builder.Services.AddSingleton<IncidentAccessGuard>();
+builder.Services.AddSingleton<IncidentScope>();
 builder.Services.AddScoped<IncidentQueries>();
 builder.Services.AddScoped<SeverityBreakdownQuery>();
 builder.Services.AddScoped<IncidentCreationService>();
@@ -85,6 +89,7 @@ app.MapGet("/health", async (SecureLabDbContext dbContext, CancellationToken can
 
 app.MapIncidentEndpoints();
 app.MapIncidentChangeEndpoints();
+app.MapIncidentCommentEndpoints();
 app.MapLab03Identity();
 app.MapForgeryTokenEndpoint();
 app.MapLab02Endpoints();

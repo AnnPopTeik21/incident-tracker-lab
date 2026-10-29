@@ -6,20 +6,30 @@ using SecureLab.Api.Presentation.Contracts;
 
 namespace SecureLab.Api.Tests;
 
+// ЛР 4: група /api/incidents вимагає входу, тому тести ЛР 1 працюють через cookie-клієнт Аліси.
 public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
-    : IClassFixture<SecureLabApiFactory>
+    : IClassFixture<SecureLabApiFactory>, IAsyncLifetime
 {
-    private readonly HttpClient _client = factory.CreateClient();
+    private HttpClient _client = null!;
 
+    public async Task InitializeAsync() => _client = await factory.LoginAsync("alice", StudySecret.Password);
+
+    public Task DisposeAsync()
+    {
+        _client.Dispose();
+        return Task.CompletedTask;
+    }
+
+    // Було: у списку і запис Аліси, і запис Боба. За матрицею ЛР 4 Reporter бачить лише своє (A-05).
     [Fact]
-    public async Task GetList_ReturnsSeededIncidents()
+    public async Task GetList_ForAlice_HasHerSeededIncident_AndNotBobs()
     {
         var incidents = await _client.GetFromJsonAsync<List<IncidentListItemResponse>>(
             "/api/incidents");
 
         Assert.NotNull(incidents);
         Assert.Contains(incidents, incident => incident.Id == DbSeeder.AliceIncidentId);
-        Assert.Contains(incidents, incident => incident.Id == DbSeeder.BobIncidentId);
+        Assert.DoesNotContain(incidents, incident => incident.Id == DbSeeder.BobIncidentId);
     }
 
     [Fact]
@@ -48,7 +58,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task ClientScript_DoesNotUseDangerousInnerHtmlSink()
     {
-        var script = await _client.GetStringAsync("/app.js");
+        using var anonymous = factory.CreateClient();
+        var script = await anonymous.GetStringAsync("/app.js");
 
         Assert.DoesNotContain("innerHTML", script, StringComparison.Ordinal);
         Assert.Contains("textContent", script, StringComparison.Ordinal);

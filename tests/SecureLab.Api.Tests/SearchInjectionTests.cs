@@ -20,11 +20,12 @@ public sealed class SearchInjectionTests(SecureLabApiFactory factory)
     private static readonly string[] SeverityRank = ["Critical", "High", "Medium", "Low"];
     private static readonly string[] StatusRank = ["New", "Triaged", "InProgress", "Resolved", "Closed"];
 
-    // ЛР 3: POST /api/incidents вимагає входу, тому клас працює через cookie-клієнт Аліси.
+    // ЛР 3: POST /api/incidents вимагає входу. ЛР 4: пошук Reporter обмежено його записами,
+    // а сортування і seed-записи різних власників тут потрібні всі. Тому клас працює від імені Analyst Morgan.
     private HttpClient _http = null!;
     private readonly List<Guid> _createdIds = [];
 
-    public async Task InitializeAsync() => _http = await factory.LoginAsync("alice", StudySecret.Password);
+    public async Task InitializeAsync() => _http = await factory.LoginAsync("morgan", StudySecret.Password);
 
     public async Task DisposeAsync()
     {

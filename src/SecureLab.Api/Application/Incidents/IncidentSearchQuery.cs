@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using SecureLab.Api.Application.Access;
 using SecureLab.Api.Application.Search;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
@@ -10,7 +11,7 @@ namespace SecureLab.Api.Application.Incidents;
 // Як упорядкувати результат: вираз з allowlist і напрям.
 public sealed record SearchOrdering(Expression<Func<Incident, object>> Key, bool Descending);
 
-public sealed class IncidentSearchQuery(SecureLabDbContext dbContext)
+public sealed class IncidentSearchQuery(SecureLabDbContext dbContext, IncidentScope scope)
 {
     public const int MaxRows = 50;
 
@@ -59,11 +60,14 @@ public sealed class IncidentSearchQuery(SecureLabDbContext dbContext)
     public async Task<IReadOnlyList<IncidentSearchItemDto>> FindAsync(
         string? text,
         SearchOrdering ordering,
+        CallerProfile caller,
         CancellationToken cancellationToken)
     {
         // Ввід стає буквальним шаблоном; далі він іде в LINQ лише як значення.
         var pattern = IlikeText.AnywhereLiteral(text ?? string.Empty);
-        var matches = dbContext.Incidents.AsNoTracking().WhereTitleOrDescriptionLike(pattern);
+        // ЛР 4: спершу межа видимості caller, потім текстова умова, сортування і Take(50).
+        var visible = scope.VisibleTo(dbContext.Incidents.AsNoTracking(), caller);
+        var matches = visible.WhereTitleOrDescriptionLike(pattern);
 
         var ordered = ordering.Descending
             ? matches.OrderByDescending(ordering.Key)

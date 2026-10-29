@@ -24,3 +24,11 @@ public sealed record IncidentCommentResponse(
     string AuthorDisplayName,
     string Text,
     DateTimeOffset CreatedAtUtc);
+
+// ЛР 4: один коментар за прямим id. IsInternal і id автора назовні не віддаються.
+public sealed record IncidentCommentReadDto(
+    Guid Id,
+    Guid IncidentId,
+    string AuthorDisplayName,
+    string Text,
+    DateTimeOffset CreatedAtUtc);

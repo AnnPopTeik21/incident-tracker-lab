@@ -13,8 +13,10 @@ async function apiFetch(path, options = {}) {
   });
 
   if (!response.ok) {
+    // Показуємо лише код і title з Problem Details. Сервер уже вирішив; клієнт нічого не приховує сам.
     const problem = await response.json().catch(() => null);
-    throw new Error(problem?.title ?? `HTTP ${response.status}`);
+    const hint = response.status === 401 ? " Увійдіть на сторінці /auth-lab.html." : "";
+    throw new Error(`${response.status} ${problem?.title ?? "HTTP"}${hint}`);
   }
 
   return response.json();
@@ -102,6 +104,8 @@ async function loadIncidentDetails(id) {
   try {
     renderIncidentDetails(await apiFetch(`/api/incidents/${encodeURIComponent(id)}`));
   } catch (error) {
+    // Відмова виводиться лише як текст: textContent не розбирає HTML з відповіді.
+    detailsElement.className = "details-denied";
     detailsElement.textContent = `Помилка: ${error.message}`;
   }
 }
@@ -142,6 +146,15 @@ async function loadSeverityBreakdown() {
 breakdownForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loadSeverityBreakdown();
+});
+
+const directIdForm = document.querySelector("#direct-id-form");
+directIdForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const id = new FormData(directIdForm).get("incidentId").trim();
+  if (id) {
+    loadIncidentDetails(id);
+  }
 });
 
 filterForm.addEventListener("submit", (event) => {

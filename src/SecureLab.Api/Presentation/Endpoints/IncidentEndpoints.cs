@@ -1,3 +1,4 @@
+using SecureLab.Api.Application.Access;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data.Entities;
 using SecureLab.Api.Presentation.Contracts;
@@ -8,8 +9,10 @@ public static class IncidentEndpoints
 {
     public static IEndpointRouteBuilder MapIncidentEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        // ЛР 4: уся група читання вимагає входу. Анонім отримує 401 ще до коду endpoint.
         var group = endpoints.MapGroup("/api/incidents")
-            .WithTags("Incidents");
+            .WithTags("Incidents")
+            .RequireAuthorization();
 
         group.MapGet("/", GetListAsync)
             .WithName("GetIncidents")
@@ -19,6 +22,8 @@ public static class IncidentEndpoints
         group.MapGet("/{id:guid}", GetDetailsAsync)
             .WithName("GetIncidentDetails")
             .Produces<IncidentDetailsResponse>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/severity-summary", GetSeverityBreakdownAsync)
@@ -31,9 +36,15 @@ public static class IncidentEndpoints
 
     private static async Task<IResult> GetListAsync(
         string? status,
+        HttpContext httpContext,
         IncidentQueries queries,
         CancellationToken cancellationToken)
     {
+        if (!CallerProfile.TryRead(httpContext.User, out var caller))
+        {
+            return AccessProblems.NoVerifiedCaller();
+        }
+
         IncidentStatus? parsedStatus = null;
         if (status is not null)
         {
@@ -49,14 +60,20 @@ public static class IncidentEndpoints
             parsedStatus = candidate;
         }
 
-        return Results.Ok(await queries.GetListAsync(parsedStatus, cancellationToken));
+        return Results.Ok(await queries.GetListAsync(parsedStatus, caller, cancellationToken));
     }
 
     private static async Task<IResult> GetSeverityBreakdownAsync(
         string? status,
+        HttpContext httpContext,
         SeverityBreakdownQuery breakdownQuery,
         CancellationToken cancellationToken)
     {
+        if (!CallerProfile.TryRead(httpContext.User, out var caller))
+        {
+            return AccessProblems.NoVerifiedCaller();
+        }
+
         IncidentStatus? statusFilter = null;
         if (status is not null)
         {
@@ -71,7 +88,7 @@ public static class IncidentEndpoints
             statusFilter = allowedStatus;
         }
 
-        return Results.Ok(await breakdownQuery.CountBySeverityAsync(statusFilter, cancellationToken));
+        return Results.Ok(await breakdownQuery.CountBySeverityAsync(statusFilter, caller, cancellationToken));
     }
 
     // Приймаємо лише назву, оголошену в enum IncidentStatus, у точному регістрі.
@@ -88,17 +105,26 @@ public static class IncidentEndpoints
             && Enum.IsDefined(parsedStatus);
     }
 
+    // Спершу факти (власник, статус) і рішення сторожа, лише потім зміст інциденту.
     private static async Task<IResult> GetDetailsAsync(
         Guid id,
+        HttpContext httpContext,
         IncidentQueries queries,
+        IncidentAccessGuard guard,
         CancellationToken cancellationToken)
     {
-        var incident = await queries.GetDetailsAsync(id, cancellationToken);
-        return incident is null
-            ? Results.Problem(
-                title: "Інцидент не знайдено",
-                detail: $"Інцидент '{id}' не існує.",
-                statusCode: StatusCodes.Status404NotFound)
-            : Results.Ok(incident);
+        if (!CallerProfile.TryRead(httpContext.User, out var caller))
+        {
+            return AccessProblems.NoVerifiedCaller();
+        }
+
+        var verdict = guard.Decide(caller, IncidentAction.ReadDetails, await queries.GetFactsAsync(id, cancellationToken));
+        if (verdict != AccessVerdict.Granted)
+        {
+            return AccessProblems.ForIncident(verdict, id);
+        }
+
+        var incident = await queries.GetDetailsAsync(id, guard.CanSeeInternalNotes(caller), cancellationToken);
+        return incident is null ? AccessProblems.IncidentMissing(id) : Results.Ok(incident);
     }
 }

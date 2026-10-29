@@ -18,3 +18,14 @@ public sealed record IncidentChangedDto(
     string Severity,
     string Status,
     DateTimeOffset UpdatedAtUtc);
+
+// Привілейований перехід New -> Triaged. Клієнт може передати лише коментар до переходу.
+// Наступний статус, поточний статус, роль і власника визначає сервер; зайве поле дає 400.
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record TriageIncidentRequest(string? Note);
+
+public sealed record TriageResultDto(
+    Guid Id,
+    string PreviousStatus,
+    string Status,
+    DateTimeOffset ChangedAtUtc);

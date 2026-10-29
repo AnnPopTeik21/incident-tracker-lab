@@ -49,3 +49,74 @@ Content-Type: application/json
 ###
 GET {{host}}/api/incidents/{{bobIncident}}
 Accept: application/json
+
+# ---------------------------------------------------------------------------
+# Після виправлення (той самий порядок, очікування з docs/access-matrix.md).
+# Крок 6 вище тепер дає 403 «Доступ до інциденту заборонено», крок 7 показує незмінений заголовок.
+@aliceNewIncident = 20000000-0000-0000-0000-000000000003
+@bobComment = 30000000-0000-0000-0000-000000000002
+@aliceInternalNote = 30000000-0000-0000-0000-000000000003
+
+### 8. Alice: чужий інцидент для читання (очікувано 403), неіснуючий id (404)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "alice", "password": "{{$processEnv SeedUsers__Password}}" }
+
+###
+GET {{host}}/api/incidents/{{bobIncident}}
+Accept: application/json
+
+###
+GET {{host}}/api/incidents/99999999-9999-9999-9999-999999999999
+Accept: application/json
+
+### 9. Alice: коментар Morgan до інциденту Bob і внутрішня нотатка до свого інциденту (обидва 403)
+GET {{host}}/api/incident-comments/{{bobComment}}
+Accept: application/json
+
+###
+GET {{host}}/api/incident-comments/{{aliceInternalNote}}
+Accept: application/json
+
+### 10. Alice: пошук і підсумок рахують лише її записи (A-11)
+GET {{host}}/api/incidents/search?q=O'Brien
+Accept: application/json
+
+###
+GET {{host}}/api/incidents/severity-summary
+Accept: application/json
+
+### 11. Alice пробує triage власного New-інциденту: 403, статус лишається New
+# @name aliceCsrf2
+GET {{host}}/api/auth/csrf
+Accept: application/json
+
+###
+POST {{host}}/api/incidents/{{aliceNewIncident}}/triage
+Content-Type: application/json
+X-CSRF-TOKEN: {{aliceCsrf2.response.body.$.token}}
+
+{ "note": "спроба Reporter" }
+
+### 12. Morgan (Analyst): читає інцидент Alice для аналізу (A-03R), але не редагує його
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "morgan", "password": "{{$processEnv SeedUsers__Password}}" }
+
+###
+GET {{host}}/api/incidents/{{aliceIncident}}
+Accept: application/json
+
+###
+# @name morganCsrf
+GET {{host}}/api/auth/csrf
+Accept: application/json
+
+###
+PATCH {{host}}/api/incidents/{{aliceIncident}}
+Content-Type: application/json
+X-CSRF-TOKEN: {{morganCsrf.response.body.$.token}}
+
+{ "description": "Аналітик переписав опис." }
