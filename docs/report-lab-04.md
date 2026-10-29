@@ -1,79 +1,107 @@
 # Звіт ЛР04
 
-## Контекст і межа виконання
-- Рівень: достатній («Задовільно») / добрий («Добре») / відмінний («Відмінно»); обґрунтування:
-- Власний baseline 2-A, base tag v0.3.0 і hash:
-- Головна action; політика 403/404; перелік маршрутів мого рівня:
-- Якщо ЛР3 виправлялась після тегу: окремий commit/hash і причина; тег не пересунуто.
+Виконала: Чубукіна Анна Олександрівна, КБ-41. Повний звіт з рисунками подано окремим файлом .docx.
+Паролів, значень cookie, CSRF-токенів і connection string тут немає.
 
-Рівні накопичувальні; заповніть свій і всі нижчі. Рядки/розділи вищого рівня позначте «не виконувалось — рівень …». Критерії й маршрут — на початку практичної частини методички.
+## Контекст і межа виконання
+- Рівень: відмінний («Відмінно»). Виконано весь добрий рівень, A-11 для search і severity-summary,
+  окремий finding A-11, відокремлений сервіс правил і обґрунтування в `docs/access-matrix.md`.
+- Baseline 2-A, base tag `v0.3.0` = `f591bff`, гілка `lab/4-authorization` від нього.
+- Головна action: mutation, `PATCH /api/incidents/{id}` (зміна title/description). Політика: **403** для
+  чужого запису, **404** лише для неіснуючого id. Маршрути мого рівня: list, details, search,
+  severity-summary, PATCH, DELETE, `POST /api/incidents/{id}/triage`, `GET /api/incident-comments/{id}`.
+- Виправлень ЛР 3 після тегу не було, стартові перевірки пройшли: alice → `/api/me` 200 з id …0001 і роллю
+  Reporter, morgan → роль Analyst, анонімний `/api/me` і `POST /api/incidents` → 401. Тести на `v0.3.0`: 91 з 91.
 
 ## Матриця і server-side рішення
-Посилання на docs/access-matrix.md; конкретні правила ролей/owner/context.
-Місця query scoping, handler, policy, дозволених DTO і server-managed fields.
+Матриця: `docs/access-matrix.md`.
+- `Application/Access/CallerProfile.cs`: id і роль лише з `HttpContext.User`.
+- `Application/Access/IncidentAccessGuard.cs`: єдине місце правил. Метод `Decide(caller, action, facts)`
+  повертає `AccessVerdict` (Granted, Refused, Absent); `DecideComment` спершу перевіряє parent, потім internal.
+- `Application/Access/IncidentScope.cs`: умова за власником у самому SQL для list, search і severity-summary.
+- `Application/Incidents/IncidentChangeService.cs`: tracked entity → рішення сторожа → перевірка змісту
+  або статусу → зміна → `SaveChangesAsync`.
+- DTO: `UpdateIncidentRequest(title, description)` і `TriageIncidentRequest(note)` з
+  `JsonUnmappedMemberHandling.Disallow`. Owner, status, severity, role сервер не приймає.
+- Аудит: `Security/AccessDenialLog.cs` (`LoggerMessage`, EventId 4101, категорія `SecureLab.AccessAudit`).
 
 ## Вразливий стан і PoC
-Vulnerable commit hash; Alice → власний ресурс; Alice → Bob resource.
-Дія, expected за матрицею, actual status, дозволений доказ; без cookie/password.
-Якщо details уже захищені в моїй ЛР 3, опишіть тимчасовий локальний read-дефект у vulnerable commit або обрану mutation; у fixed commit захист відновлено. Нова mutation лише заради PoC не обов’язкова.
+- Vulnerable commit `8c49da4`: `PATCH /api/incidents/{id}` шукав запис лише за id, без власника.
+  Попередній коміт `60ac45a` додав internal comment і каркас звіту.
+- Alice → власний інцидент …0001: 200. Alice → інцидент Bob …0002 з тією самою cookie і CSRF-токеном,
+  змінено лише id: **200**, Bob після цього бачить заголовок «Заголовок змінено з облікового запису Alice».
+- Окремо: у стані `v0.3.0` `GET /api/incidents/{id}`, `search` і `severity-summary` відповідали навіть без входу.
 
 ## Виправлення та retest
-Fixed commit hash; ті самі запити до/після; результати потрібних A-сценаріїв.
-Для mutation: стан до/після дозволу та стан без змін після deny.
-Для read: DTO не розкриває чужі дані/внутрішні owner fields.
-Узгодженість 404 для чужого/невідомого — для всіх реалізованих маршрутів; окремий доказ A-10 — з доброго рівня за політики 404.
-
-Як читати докази в таблиці: **mutation perimeter** — усі змінювальні дії (update/delete/transition); **state assertion** — повторне читання й порівняння стану до/після; **contract test** — запит із зайвим полем для обраного A-08a/A-08b. Для audit знайдіть `authorization.denied` у виводі API й збережіть рядок без пароля, cookie, token і повного body. Дозволена привілейована дія потребує ролі й контексту за матрицею (для triage — `Analyst` і `New`).
+- Fixed commit `cd218cf`, тег `v0.4.0` на ньому.
+- Той самий PATCH Alice → Bob: **403** «Доступ до інциденту заборонено», заголовок Bob без змін; DELETE теж 403.
+- Власний PATCH Alice: 200, змінився лише опис.
+- Helper `login-and-read.py --user alice --incident bob`: `read_status=403`; `--user morgan --incident alice`: 200.
+- Неіснуючий id: 404 «Інцидент не знайдено». A-10 не застосовується (політика 403).
 
 ## Доказова таблиця
-Якщо головна action — mutation, доказ owner/non-owner для details запишіть у стовпці «Доказ» рядка A-03R.
-
-Усі рівні: автоматичні HTTP A-02/A-03, A-03R — test або `.http`. Добрий додає A-01, A-04–A-07, одне з A-08a/A-08b, A-09, A-12; A-10 лише для 404. A-06 і A-07 автоматичні. Відмінний додає A-11 (search і severity-summary); A-06/A-08a/b успадковано. Запишіть фактичні результати; рядки вищого рівня позначте з поясненням.
 
 | ID | Рівень | Сценарій | Передумови | Дія | Очікувано | Фактично | Доказ |
 |---|---|---|---|---|---|---|---|
-| A-01 | добрий | Анонімний доступ | немає authentication context | protected request | `401`, не HTML redirect | … | integration test / response |
-| A-02 | достатній, обов’язковий | Власний ресурс | Alice має власний seed resource | вибрана головна action: details/read або одна mutation | allow | … | автоматичний HTTP test |
-| A-03 | достатній, обов’язковий | Чужий ресурс | Alice, Bob resource | та сама головна action з підміненим id | `403` або `404`; для mutation state без змін | … | автоматичний HTTP test; для mutation стан до/після |
-| A-03R | достатній, entry-контракт ЛР 5 | Дозволений аналітичний read | Morgan (`Analyst`), ресурс Alice | `GET /api/incidents/{id}` | allow для аналізу; не надає права довільної mutation | … | test / `.http` |
-| A-04 | добрий | Чужий ресурс, усі змінювальні дії | Alice, Bob resource | підмінити id в update/delete | deny, state без змін | … | тест + порівняння стану до/після |
-| A-05 | добрий | List | Alice | list | лише дозволена множина | … | response / test |
-| A-06 | добрий | Вертикальне підвищення привілеїв | звичайний Reporter | privileged transition | deny, status без змін | … | тест + порівняння стану до/після |
-| A-07 | добрий | Дозволена привілейована дія | роль і контекст за матрицею | transition за матрицею | allow | … | автоматичний HTTP test |
-| A-08a | добрий, альтернатива A-08b | Надлишкове присвоєння (overposting): контракт ігнорує невідоме поле | authenticated user; DTO не містить protected field | forged owner/role/status field у regular update | дозволений content може змінитися, але protected state — ні | … | тест контракту + порівняння стану до/після |
-| A-08b | добрий, альтернатива A-08a | Overposting: контракт відхиляє зайве або заборонене поле | authenticated user; контракт явно відхиляє поле | той самий forged request | `400` або `403` за контрактом; весь protected state без змін | … | тест контракту + порівняння стану до/після |
-| A-09 | добрий | Аудиторська подія (audit event) | denied privileged request | знайти authorization.denied у виводі API | безпечна подія без секретів | … | доказ із вилученими секретами |
-| A-10 | добрий, лише політика `404` | Нерозрізнюваність `404` | той самий authenticated client; identifier чужого й identifier неіснуючого ресурсу | виконати два однакові за структурою запити, змінивши лише id | однакові status, `Content-Type` і тіло після вилучення полів кореляції запиту (`traceId`, `requestId`) | … | integration test + дві збережені відповіді |
-| A-11 | відмінний | Власні endpoint-и ЛР 1–2 | Alice; власні endpoint-и з ЛР 1–2 | виконати `severity-summary` і `search` | результат обмежений дозволеною множиною | … | response / test |
-| A-12 | добрий | Child resource та internal comment | Alice (`Reporter`); прямий id коментаря Morgan до інциденту Bob (comment-2 у seed-identifiers.json) | запросити `GET /api/incident-comments/{id}` і перевірити details-проєкцію для `Reporter` | direct child access — deny за зафіксованою політикою; internal comment не потрапляє у відповідь `Reporter` | … | integration test + response для details |
+| A-01 | добрий | Анонімний доступ | немає cookie | 8 захищених маршрутів | `401`, не redirect | 401 problem+json, без Location, на всіх 8 | `OwnershipBoundaryTests.Anonymous_Gets401Problem_NotRedirect` |
+| A-02 | достатній | Власний ресурс | Alice, власний запис | PATCH description | allow | 200, змінився лише опис, owner/status/severity ті самі | `ForeignIncidentChangeTests.Owner_ChangesDescription_AndOnlyContentMoves`; details: `Owner_ReadsOwnDetails` |
+| A-03 | достатній | Чужий ресурс | Alice, інцидент Bob | той самий PATCH з id Bob | 403, стан без змін | 403, знімок рядка до і після однаковий | `Reporter_PatchingBobsIncident_GetsForbidden_AndRecordStaysTheSame`, PowerShell |
+| A-03R | достатній | Аналітичний read | Morgan, інцидент Alice | GET details | allow, без права mutation | 200; PATCH Morgan → 403, стан без змін. Details owner/non-owner: 200 / 403 | `Analyst_ReadsReporterIncident_ForAnalysis`, `Analyst_PatchingReporterIncident_*`, `OtherReporter_GetsForbidden_*`, `.http` |
+| A-04 | добрий | Усі змінювальні дії | Alice, інцидент Bob | DELETE id Bob | deny, стан без змін | 403, запис на місці | `Reporter_DeletingBobsIncident_*` |
+| A-05 | добрий | List | Alice | GET list | лише свої | 3 записи, усі Alice; Bob 2 свої; Morgan усі | `ReadPathScopeTests.List_*` |
+| A-06 | добрий | Вертикальне підвищення | Alice, власний New …0003 | triage | 403, status New | 403, статус New | `Reporter_TriagingOwnNewIncident_*` |
+| A-07 | добрий | Дозволена привілейована дія | Morgan, новий запис New | triage | allow | 200, New → Triaged, рядок історії від Morgan; повтор 409 | `Analyst_TriagesNewIncident_*`, `Analyst_OnAlreadyTriagedIncident_GetsConflict_*` |
+| A-08a | добрий | Ігнорування поля | — | — | — | не виконувалось: обрано A-08b | — |
+| A-08b | добрий | Overposting відхиляється | Alice, власний запис | PATCH з ownerUserId / status / severity / role / isTransitionAllowed | 400, стан без змін | 400 для кожного поля, рядок без змін (навіть title) | `ExtraProtectedField_Gets400_AndWholeRecordStays` (5 випадків), triage зі `status` → 400 |
+| A-09 | добрий | Audit event | відмова triage | знайти `authorization.denied` | без секретів, той самий trace | subjectId, action, resource, result, час UTC, trace = traceId відповіді; імені, пароля, токена, нотатки немає | `DeniedTriage_LeavesSafeAuditEvent_WithResponseTraceId`, журнал API |
+| A-10 | добрий, лише 404 | Нерозрізнюваність | — | — | — | не застосовується: політика 403 (обґрунтування в матриці) | `UnknownId_GetsNotFound_WhichDiffersFromForeignRefusal` фіксує 403 і 404 |
+| A-11 | відмінний | search і severity-summary | Alice | `search?q=O'Brien`, summary | лише свої | search: `[]` (до: запис Bob …0004); summary: Low 2, Medium 1, High 0 (до: 3/1/1) | `ReadPathScopeTests.Search_*`, `SeveritySummary_*` |
+| A-12 | добрий | Child і internal | Alice; comment-2, comment-3 | GET comment | deny; internal не видно | comment-2 → 403, comment-3 → 403, comment-1 → 200; details Alice без нотатки, Morgan з нотаткою | `ChildResourceTests` |
 
-## Основний finding і залишковий ризик (усі рівні)
-Контекст → гіпотеза → стан до й hash → першопричина → fix і DTO → retest → позитивна регресія → короткий залишковий ризик. CSRF для cookie mutation до ЛР 6 — задокументований навчальний борг.
+## Основний finding і залишковий ризик
+1. Контекст: Incident, дія PATCH (зміна змісту), локальні Alice і Bob (Reporter).
+2. Гіпотеза: Alice змінить запис Bob, підставивши його id.
+3. До: `8c49da4`, PATCH Alice → …0002 дав 200, заголовок Bob змінився.
+4. Причина: `IncidentChangeService.ChangeContentAsync` шукав запис лише за id і одразу змінював поля.
+   Порівняння з principal і рішення за матрицею не було.
+5. Виправлення: виклик `IncidentAccessGuard.Decide(caller, EditContent, facts)` до будь-якої зміни; DTO
+   лише title і description, зайве поле дає 400.
+6. Retest: той самий запит → 403, стан Bob без змін.
+7. Позитивна регресія: власний PATCH 200, Analyst читає details, Analyst робить triage.
+8. Залишковий ризик: одночасні triage без захисту версії; 403 підтверджує існування id; роль у cookie діє
+   до повторного входу. CSRF-токен з ЛР 3 тепер захищає PATCH, DELETE і triage; повний огляд у ЛР 6.
 
-## Browser flow (усі рівні)
-Login на auth-lab.html → головна сторінка → власні details → Bob probe.
-Результат UI/HTTP; жодних значень credentials, cookie або повного Set-Cookie.
-Знімки обох станів — як рис. 7 методички, без вкладок Application/Network.
+Схема: запит Alice з id → cookie дає principal → `CallerProfile` → факти запису (власник, статус) →
+`IncidentAccessGuard` → 403/404 або дозвіл → зміна і `SaveChangesAsync` лише після дозволу.
 
-## Добрий рівень: роль, transition, child, audit (також для відмінного)
-Дозволений/заборонений transition, server next status, контекст New→Triaged.
-Morgan до Bob comment; internal до Alice: Reporter deny, Analyst parent-authorized.
-Audit subject/action/resource/result/UTC/trace; збіг trace у відповіді і події.
+## Finding A-11 (відмінний рівень)
+- До: `GET /api/incidents/search?q=O'Brien` з cookie Alice повертав інцидент Bob …0004 з описом.
+  Без cookie той самий запит теж давав 200. Severity-summary для Alice рахував High 1 з інциденту Bob.
+- Причина: `IncidentSearchQuery.FindAsync` і `SeverityBreakdownQuery` будували запит від усієї таблиці,
+  маршрути не мали `RequireAuthorization`.
+- Виправлення: `IncidentScope.VisibleTo` стоїть першим у запиті, до ILIKE, сортування, `Take(50)` і `GroupBy`;
+  обидва маршрути вимагають входу.
+- Після: Alice отримує `[]`, Bob свій запис; summary Alice Low 2, Medium 1, High 0; анонім 401.
 
-## Відмінний рівень (додатково до всього доброго)
-Відокремлений resource-based handler або policy; A-11 для наявних search і severity-summary, дозволена множина; окремий finding додаткової проблеми з доказом до/після.
-A-08a/A-08b і A-06 підтверджують захист privilege-related field і вертикальний regression; нових повторних тестів не потрібно.
-Обґрунтування видимості ресурсу, прав кожної ролі (least privilege), охоплення і залишкових ризиків.
-Batch/export — лише якщо є; concurrent transitions — лише якщо викладач надав відтворюваний сценарій; інакше «не застосовується».
+## Browser flow
+Login alice на `auth-lab.html` → головна сторінка (у списку лише 3 записи Alice) → деталі «Підозрілий лист
+із вкладенням» → поле «Відкрити за id» з id Bob → «Помилка: 403 Доступ до інциденту заборонено».
+Відмова пишеться через `textContent`, у `app.js` немає `innerHTML`.
 
-## Перевірки, відтворення і подання (усі рівні)
-ОС/.NET/PostgreSQL; точні команди; фактичні counts/status і recovery.
-Build/tests output; hash тегу v0.4.0 (= fixed commit; вписується наступним commit після тегу); посилання commit/tag і Moodle.
-Окремо: невиконані необов’язкові перевірки/обмеження.
+## Відмінний рівень
+- Сервіс правил відокремлений від endpoint-ів і зареєстрований у DI; endpoint-и лише питають його.
+- Перевірка тестами: якщо сторож завжди дозволяє, 12 з 31 тесту трьох класів стають червоними.
+- Least privilege, видимість ресурсу і залишкові ризики: розділи в `docs/access-matrix.md`.
+- Batch/export у проєкті немає; сценарію одночасних переходів викладач не давав.
 
-## Використання ШІ (довільна форма; журнал — за бажанням)
-Не використовував/ла ШІ / використав/ла дозволеним способом:
-| Дата/інструмент | Для чого | Що використано | Що перевірено самостійно |
-|---|---|---|---|
-| | | | |
-Паролі, cookie, реальні персональні дані й приватний репозиторій не надсилайте.
+## Перевірки, відтворення і подання
+- Windows 11, PowerShell 7, .NET SDK 10.0.302, PostgreSQL 18 у Docker Desktop (порт 54331, `infra/.env`).
+- `docker compose --env-file infra/.env -f infra/compose.yaml up -d --wait`,
+  `dotnet run --project src/SecureLab.Api -- --reset-database`,
+  `dotnet test tests/SecureLab.Api.Tests/SecureLab.Api.Tests.csproj --configuration Release`.
+- Підсумок після останньої зміни: 136 з 136, з них 45 нових. Build: 0 попереджень.
+- Коміти: `60ac45a` (seed і каркас звіту), vulnerable `8c49da4`, fixed `cd218cf` = `v0.4.0`;
+  цей звіт з hash іде наступним комітом після тегу.
+
+## Використання ШІ
+ШІ не використовувався. Журнал: не застосовується.
